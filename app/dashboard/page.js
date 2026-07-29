@@ -18,6 +18,7 @@ const emptyForm = () => ({
   amount: '',
   currency: 'LBP',
   notes: '',
+  debtDirection: 'owed_to_me',
 });
 
 const PIE_COLORS = ['#B8894C', '#B0463F', '#3F6E52', '#4C7A9E', '#8A6BA8', '#C48A3F', '#6B8F8A', '#9E6B5C'];
@@ -36,6 +37,10 @@ export default function Dashboard() {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [filterType, setFilterType] = useState('all');
   const [expandedMonth, setExpandedMonth] = useState(null);
+  const [sellingEntry, setSellingEntry] = useState(null);
+  const [sellForm, setSellForm] = useState({ amount: '', currency: 'USD', date: new Date().toISOString().slice(0, 10) });
+  const [sellError, setSellError] = useState('');
+  const [selling, setSelling] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -98,6 +103,7 @@ export default function Dashboard() {
         currency: form.currency,
         amount_raw: amt,
         usd, lbp,
+        debt_direction: form.type === 'debt' ? form.debtDirection : null,
       })
       .select()
       .single();
@@ -105,6 +111,75 @@ export default function Dashboard() {
     if (error) { setFormError('Could not save: ' + error.message); return; }
     setEntries((prev) => [data, ...prev].sort((a, b) => b.entry_date.localeCompare(a.entry_date)));
     setForm((f) => ({ ...emptyForm(), type: f.type, currency: f.currency }));
+  };
+
+  const openSell = (entry) => {
+    setSellingEntry(entry);
+    setSellForm({ amount: '', currency: entry.currency || 'USD', date: new Date().toISOString().slice(0, 10) });
+    setSellError('');
+  };
+
+  const confirmSell = async () => {
+    const saleAmt = parseFloat(sellForm.amount);
+    if (!saleAmt || saleAmt <= 0) { setSellError('Enter a sale amount greater than zero.'); return; }
+    setSelling(true);
+    setSellError('');
+    const { usd: soldUsd, lbp: soldLbp } = toUsdLbp(saleAmt, sellForm.currency);
+    const profitUsd = soldUsd - Number(sellingEntry.usd);
+    const profitLbp = profitUsd * RATE;
+
+    const { data: profitEntry, error: profitError } = await supabase
+      .from('entries')
+      .insert({
+        user_id: session.user.id,
+        entry_date: sellForm.date,
+        type: 'profit',
+        category: sellingEntry.category,
+        where_text: sellingEntry.where_text,
+        notes: `${profitUsd >= 0 ? 'Profit' : 'Loss'} from sale of ${sellingEntry.category}`,
+        currency: 'USD',
+        amount_raw: Math.max(Math.abs(profitUsd), 0.01),
+        usd: profitUsd,
+        lbp: profitLbp,
+      })
+      .select()
+      .single();
+
+    if (profitError) { setSelling(false); setSellError('Could not save: ' + profitError.message); return; }
+
+    const { data: updatedAsset, error: updateError } = await supabase
+      .from('entries')
+      .update({
+        status: 'sold',
+        sold_amount_raw: saleAmt,
+        sold_currency: sellForm.currency,
+        sold_usd: soldUsd,
+        sold_lbp: soldLbp,
+        sold_date: sellForm.date,
+        linked_profit_entry_id: profitEntry.id,
+      })
+      .eq('id', sellingEntry.id)
+      .select()
+      .single();
+
+    setSelling(false);
+    if (updateError) { setSellError('Sale logged, but could not update the item: ' + updateError.message); return; }
+
+    setEntries((prev) => [
+      profitEntry,
+      ...prev.map((e) => (e.id === updatedAsset.id ? updatedAsset : e)),
+    ].sort((a, b) => b.entry_date.localeCompare(a.entry_date)));
+    setSellingEntry(null);
+  };
+
+  const settleDebt = async (id) => {
+    const { data, error } = await supabase
+      .from('entries')
+      .update({ status: 'settled' })
+      .eq('id', id)
+      .select()
+      .single();
+    if (!error) setEntries((prev) => prev.map((e) => (e.id === id ? data : e)));
   };
 
   const deleteEntry = async (id) => {
@@ -137,8 +212,25 @@ export default function Dashboard() {
 
   const totals = useMemo(() => {
     const t = { income: 0, expense: 0, investment: 0, profit: 0 };
-    entries.forEach((e) => { t[e.type] += Number(e.usd); });
-    return { ...t, net: t.income + t.profit - t.expense - t.investment };
+    let debtOwedToMe = 0;
+    let debtIOwe = 0;
+    entries.forEach((e) => {
+      if (e.type === 'debt') {
+        if (e.status === 'settled') return;
+        if (e.debt_direction === 'i_owe') debtIOwe += Number(e.usd);
+        else debtOwedToMe += Number(e.usd);
+      } else {
+        t[e.type] += Number(e.usd);
+      }
+    });
+    const netDebt = debtOwedToMe - debtIOwe;
+    return {
+      ...t,
+      debtOwedToMe,
+      debtIOwe,
+      netDebt,
+      net: t.income + t.profit - t.expense - t.investment + netDebt,
+    };
   }, [entries]);
 
   const expenseByCategory = useMemo(() => {
@@ -156,6 +248,7 @@ export default function Dashboard() {
   const monthly = useMemo(() => {
     const m = {};
     entries.forEach((e) => {
+      if (e.type === 'debt') return;
       const key = e.entry_date.slice(0, 7);
       if (!m[key]) m[key] = { month: key, income: 0, expense: 0, investment: 0, profit: 0 };
       m[key][e.type] += Number(e.usd);
@@ -181,12 +274,19 @@ export default function Dashboard() {
     const m = {};
     visibleEntries.forEach((e) => {
       const key = e.entry_date.slice(0, 7);
-      if (!m[key]) m[key] = { month: key, entries: [], income: 0, expense: 0, investment: 0, profit: 0 };
+      if (!m[key]) m[key] = { month: key, entries: [], income: 0, expense: 0, investment: 0, profit: 0, debtOwedToMe: 0, debtIOwe: 0 };
       m[key].entries.push(e);
-      m[key][e.type] += Number(e.usd);
+      if (e.type === 'debt') {
+        if (e.status !== 'settled') {
+          if (e.debt_direction === 'i_owe') m[key].debtIOwe += Number(e.usd);
+          else m[key].debtOwedToMe += Number(e.usd);
+        }
+      } else {
+        m[key][e.type] += Number(e.usd);
+      }
     });
     return Object.values(m)
-      .map((g) => ({ ...g, net: g.income + g.profit - g.expense - g.investment }))
+      .map((g) => ({ ...g, net: g.income + g.profit - g.expense - g.investment + g.debtOwedToMe - g.debtIOwe }))
       .sort((a, b) => b.month.localeCompare(a.month));
   }, [visibleEntries]);
 
@@ -262,7 +362,7 @@ export default function Dashboard() {
         {tab === 'add' && (
           <div style={{ maxWidth: 560 }}>
             <p style={{ color: 'var(--slate)', fontSize: 14, marginTop: 0, marginBottom: 24 }}>
-              Log what moved today — income, a purchase, an investment, or a sale profit.
+              Log what moved today — income, a purchase, an investment, a sale profit, or debt.
             </p>
             <form onSubmit={addEntry} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -282,6 +382,25 @@ export default function Dashboard() {
                 Date
                 <input type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} style={{ marginTop: 6 }} />
               </label>
+
+              {form.type === 'debt' && (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {[
+                    { key: 'owed_to_me', label: 'Owed to me' },
+                    { key: 'i_owe', label: 'I owe' },
+                  ].map((d) => (
+                    <button type="button" key={d.key} onClick={() => setForm((f) => ({ ...f, debtDirection: d.key }))} style={{
+                      flex: 1, padding: '10px 12px', borderRadius: 4, cursor: 'pointer',
+                      border: `1.5px solid ${form.debtDirection === d.key ? '#8A6BA8' : 'var(--paper-line)'}`,
+                      background: form.debtDirection === d.key ? '#8A6BA81a' : 'transparent',
+                      color: form.debtDirection === d.key ? '#8A6BA8' : 'var(--slate)', fontWeight: 600, fontSize: 13,
+                    }}>
+                      {d.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
                 Category
                 <input list="cat-suggestions" placeholder="e.g. Rent, Stocks, Salary" value={form.category}
@@ -391,24 +510,49 @@ export default function Dashboard() {
                               <tbody>
                                 {g.entries.map((e) => {
                                   const typeInfo = TYPES.find((t) => t.key === e.type);
+                                  const isActiveAsset = e.type === 'investment' && e.status === 'active';
+                                  const isSoldAsset = e.type === 'investment' && e.status === 'sold';
+                                  const isActiveDebt = e.type === 'debt' && e.status !== 'settled';
+                                  const isSettledDebt = e.type === 'debt' && e.status === 'settled';
+                                  const assetProfit = isSoldAsset ? Number(e.sold_usd) - Number(e.usd) : null;
                                   return (
                                     <tr key={e.id}>
                                       <td>{e.entry_date}</td>
                                       <td><span style={{ color: typeInfo.color, fontWeight: 600 }}>{typeInfo.label}</span></td>
-                                      <td>{e.category}</td>
+                                      <td>
+                                        {e.category}
+                                        {isSoldAsset && (
+                                          <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 2 }}>
+                                            Sold {e.sold_date} for {fmtUSD(e.sold_usd)} · <span style={{ color: assetProfit >= 0 ? 'var(--green)' : 'var(--coral)', fontWeight: 600 }}>{assetProfit >= 0 ? '+' : ''}{fmtUSD(assetProfit)}</span>
+                                          </div>
+                                        )}
+                                        {e.type === 'debt' && (
+                                          <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 2 }}>
+                                            {e.debt_direction === 'i_owe' ? 'I owe' : 'Owed to me'}{isSettledDebt ? ' · Settled' : ''}
+                                          </div>
+                                        )}
+                                      </td>
                                       <td>{e.where_text || '—'}</td>
                                       <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtLBP(e.lbp)}</td>
                                       <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(e.usd)}</td>
                                       <td style={{ color: 'var(--slate)' }}>{e.notes || '—'}</td>
                                       <td>
-                                        {confirmDeleteId === e.id ? (
-                                          <span style={{ display: 'flex', gap: 6 }}>
-                                            <button onClick={() => deleteEntry(e.id)} style={{ background: 'var(--coral)', color: '#fff', border: 'none', borderRadius: 3, padding: '3px 8px', fontSize: 11 }}>Delete</button>
-                                            <button onClick={() => setConfirmDeleteId(null)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
-                                          </span>
-                                        ) : (
-                                          <button onClick={() => setConfirmDeleteId(e.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>Delete</button>
-                                        )}
+                                        <span style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                                          {isActiveAsset && (
+                                            <button onClick={() => openSell(e)} style={{ background: 'none', border: '1px solid var(--gold)', color: 'var(--gold)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Sell</button>
+                                          )}
+                                          {isActiveDebt && (
+                                            <button onClick={() => settleDebt(e.id)} style={{ background: 'none', border: '1px solid #8A6BA8', color: '#8A6BA8', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Settle</button>
+                                          )}
+                                          {confirmDeleteId === e.id ? (
+                                            <span style={{ display: 'flex', gap: 6 }}>
+                                              <button onClick={() => deleteEntry(e.id)} style={{ background: 'var(--coral)', color: '#fff', border: 'none', borderRadius: 3, padding: '3px 8px', fontSize: 11 }}>Delete</button>
+                                              <button onClick={() => setConfirmDeleteId(null)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
+                                            </span>
+                                          ) : (
+                                            <button onClick={() => setConfirmDeleteId(e.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>Delete</button>
+                                          )}
+                                        </span>
                                       </td>
                                     </tr>
                                   );
@@ -434,6 +578,7 @@ export default function Dashboard() {
               <KpiCard label="Expenses" value={fmtUSD(totals.expense)} color="var(--coral)" />
               <KpiCard label="Invested" value={fmtUSD(totals.investment)} color="var(--gold)" />
               <KpiCard label="Sale profit" value={fmtUSD(totals.profit)} color="var(--blue)" />
+              <KpiCard label="Debt (net)" value={fmtUSD(totals.netDebt)} color={totals.netDebt >= 0 ? 'var(--green)' : 'var(--coral)'} />
               <KpiCard label="Net position" value={fmtUSD(totals.net)} color={totals.net >= 0 ? 'var(--green)' : 'var(--coral)'} bold />
             </div>
 
@@ -514,6 +659,58 @@ export default function Dashboard() {
           )
         )}
       </main>
+
+      {sellingEntry && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,43,57,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 50 }}>
+          <div style={{ background: 'var(--card)', width: '100%', maxWidth: 480, borderRadius: '8px 8px 0 0', padding: '22px 22px 28px', boxShadow: '0 -8px 30px rgba(0,0,0,0.2)' }}>
+            <h3 style={{ fontSize: 17, marginBottom: 4 }}>Sell {sellingEntry.category}</h3>
+            <p style={{ color: 'var(--slate)', fontSize: 13, marginTop: 0, marginBottom: 18 }}>
+              Bought for {fmtUSD(sellingEntry.usd)}. Enter what it sold for — profit or loss logs automatically.
+            </p>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
+              <label style={{ flex: 1, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                Sale amount
+                <input type="number" step="any" min="0" placeholder="0" value={sellForm.amount}
+                  onChange={(e) => setSellForm((f) => ({ ...f, amount: e.target.value }))} style={{ marginTop: 6 }} autoFocus />
+              </label>
+              <label style={{ width: 110, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                Currency
+                <select value={sellForm.currency} onChange={(e) => setSellForm((f) => ({ ...f, currency: e.target.value }))} style={{ marginTop: 6 }}>
+                  <option value="USD">USD</option>
+                  <option value="LBP">LBP</option>
+                </select>
+              </label>
+            </div>
+            <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, display: 'block', marginBottom: 14 }}>
+              Sale date
+              <input type="date" value={sellForm.date} onChange={(e) => setSellForm((f) => ({ ...f, date: e.target.value }))} style={{ marginTop: 6 }} />
+            </label>
+
+            {sellForm.amount && !Number.isNaN(parseFloat(sellForm.amount)) && (
+              (() => {
+                const { usd: previewUsd } = toUsdLbp(parseFloat(sellForm.amount), sellForm.currency);
+                const previewProfit = previewUsd - Number(sellingEntry.usd);
+                return (
+                  <div style={{ fontSize: 13, marginBottom: 16, color: previewProfit >= 0 ? 'var(--green)' : 'var(--coral)', fontWeight: 600 }}>
+                    {previewProfit >= 0 ? 'Profit' : 'Loss'}: {fmtUSD(previewProfit)}
+                  </div>
+                );
+              })()
+            )}
+
+            {sellError && <div style={{ color: 'var(--coral)', fontSize: 13, marginBottom: 14 }}>{sellError}</div>}
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setSellingEntry(null)} style={{ flex: 1, padding: '11px 16px', border: '1px solid var(--paper-line)', borderRadius: 4, background: 'transparent', color: 'var(--slate)', fontWeight: 600 }}>
+                Cancel
+              </button>
+              <button onClick={confirmSell} disabled={selling} style={{ flex: 1, padding: '11px 16px', border: 'none', borderRadius: 4, background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600, opacity: selling ? 0.6 : 1 }}>
+                {selling ? 'Saving…' : 'Confirm sale'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
