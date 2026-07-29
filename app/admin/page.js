@@ -26,6 +26,7 @@ export default function AdminPage() {
         .single();
 
       if (!profile?.is_admin) {
+        // Not an admin — RLS would block the data anyway, but redirect for a clean UX.
         router.replace('/dashboard');
         return;
       }
@@ -48,16 +49,27 @@ export default function AdminPage() {
     const m = {};
     entries.forEach((e) => {
       const key = e.user_id;
-      if (!m[key]) m[key] = { income: 0, expense: 0, investment: 0, profit: 0, count: 0 };
-      m[key][e.type] += Number(e.usd);
+      if (!m[key]) m[key] = { income: 0, expense: 0, investment: 0, profit: 0, debtOwedToMe: 0, debtIOwe: 0, count: 0 };
+      if (e.type === 'debt') {
+        if (e.status !== 'settled') {
+          if (e.debt_direction === 'i_owe') m[key].debtIOwe += Number(e.usd);
+          else m[key].debtOwedToMe += Number(e.usd);
+        }
+      } else {
+        m[key][e.type] += Number(e.usd);
+      }
       m[key].count += 1;
     });
-    return Object.entries(m).map(([userId, t]) => ({
-      userId,
-      email: emailFor(userId),
-      ...t,
-      net: t.income + t.profit - t.expense - t.investment,
-    }));
+    return Object.entries(m).map(([userId, t]) => {
+      const netDebt = t.debtOwedToMe - t.debtIOwe;
+      return {
+        userId,
+        email: emailFor(userId),
+        ...t,
+        netDebt,
+        net: t.income + t.profit - t.expense - t.investment + netDebt,
+      };
+    });
   }, [entries, profiles]);
 
   if (loading || !allowed) {
@@ -91,7 +103,7 @@ export default function AdminPage() {
           <table>
             <thead>
               <tr>
-                {['User', 'Entries', 'Income', 'Expenses', 'Invested', 'Sale profit', 'Net'].map((h) => <th key={h}>{h}</th>)}
+                {['User', 'Entries', 'Income', 'Expenses', 'Invested', 'Sale profit', 'Debt (net)', 'Net'].map((h) => <th key={h}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -103,6 +115,7 @@ export default function AdminPage() {
                   <td style={{ color: 'var(--coral)' }}>{fmtUSD(u.expense)}</td>
                   <td style={{ color: 'var(--gold)' }}>{fmtUSD(u.investment)}</td>
                   <td style={{ color: 'var(--blue)' }}>{fmtUSD(u.profit)}</td>
+                  <td style={{ color: u.netDebt >= 0 ? 'var(--green)' : 'var(--coral)' }}>{fmtUSD(u.netDebt)}</td>
                   <td style={{ fontWeight: 600, color: u.net >= 0 ? 'var(--green)' : 'var(--coral)' }}>{fmtUSD(u.net)}</td>
                 </tr>
               ))}
