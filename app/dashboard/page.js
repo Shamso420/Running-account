@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  PieChart, Pie, Cell, BarChart, Bar,
+  PieChart, Pie, Cell, BarChart, Bar, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import { supabase } from '../../lib/supabaseClient';
@@ -24,7 +24,7 @@ const PIE_COLORS = ['#B8894C', '#B0463F', '#3F6E52', '#4C7A9E', '#8A6BA8', '#C48
 
 export default function Dashboard() {
   const router = useRouter();
-  const [session, setSession] = useState(undefined);
+  const [session, setSession] = useState(undefined); // undefined = loading, null = no session
   const [isAdmin, setIsAdmin] = useState(false);
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -35,6 +35,7 @@ export default function Dashboard() {
   const [loadError, setLoadError] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [filterType, setFilterType] = useState('all');
+  const [expandedMonth, setExpandedMonth] = useState(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -162,10 +163,44 @@ export default function Dashboard() {
     return Object.values(m).sort((a, b) => a.month.localeCompare(b.month));
   }, [entries]);
 
+  const trend = useMemo(() => {
+    let running = 0;
+    return monthly.map((m) => {
+      const net = m.income + m.profit - m.expense - m.investment;
+      running += net;
+      return { month: m.month, income: m.income, expense: m.expense, net: running };
+    });
+  }, [monthly]);
+
   const visibleEntries = useMemo(
     () => (filterType === 'all' ? entries : entries.filter((e) => e.type === filterType)),
     [entries, filterType]
   );
+
+  const monthGroups = useMemo(() => {
+    const m = {};
+    visibleEntries.forEach((e) => {
+      const key = e.entry_date.slice(0, 7);
+      if (!m[key]) m[key] = { month: key, entries: [], income: 0, expense: 0, investment: 0, profit: 0 };
+      m[key].entries.push(e);
+      m[key][e.type] += Number(e.usd);
+    });
+    return Object.values(m)
+      .map((g) => ({ ...g, net: g.income + g.profit - g.expense - g.investment }))
+      .sort((a, b) => b.month.localeCompare(a.month));
+  }, [visibleEntries]);
+
+  const monthLabel = (key) => {
+    const [y, mo] = key.split('-');
+    const d = new Date(Number(y), Number(mo) - 1, 1);
+    return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  };
+
+  useEffect(() => {
+    if (monthGroups.length > 0 && !monthGroups.some((g) => g.month === expandedMonth)) {
+      setExpandedMonth(monthGroups[0].month);
+    }
+  }, [monthGroups]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (session === undefined || loading) {
     return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading…</div>;
@@ -294,50 +329,98 @@ export default function Dashboard() {
         {tab === 'ledger' && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
-              <p style={{ color: 'var(--slate)', fontSize: 14, margin: 0 }}>Every entry you've logged.</p>
+              <p style={{ color: 'var(--slate)', fontSize: 14, margin: 0 }}>Grouped by month — tap a month to see its entries.</p>
               <select value={filterType} onChange={(e) => setFilterType(e.target.value)} style={{ width: 'auto', padding: '7px 10px', fontSize: 13 }}>
                 <option value="all">All types</option>
                 {TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
               </select>
             </div>
 
-            {visibleEntries.length === 0 ? (
+            {monthGroups.length === 0 ? (
               <EmptyState onAdd={() => setTab('add')} filtered={entries.length > 0} />
             ) : (
-              <div style={{ border: '1px solid var(--paper-line)', borderRadius: 4, overflow: 'auto' }}>
-                <table>
-                  <thead>
-                    <tr>
-                      {['Date', 'Type', 'Category', 'Where', 'LBP', 'USD', 'Notes', ''].map((h) => <th key={h}>{h}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleEntries.map((e) => {
-                      const typeInfo = TYPES.find((t) => t.key === e.type);
-                      return (
-                        <tr key={e.id}>
-                          <td>{e.entry_date}</td>
-                          <td><span style={{ color: typeInfo.color, fontWeight: 600 }}>{typeInfo.label}</span></td>
-                          <td>{e.category}</td>
-                          <td>{e.where_text || '—'}</td>
-                          <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtLBP(e.lbp)}</td>
-                          <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(e.usd)}</td>
-                          <td style={{ color: 'var(--slate)' }}>{e.notes || '—'}</td>
-                          <td>
-                            {confirmDeleteId === e.id ? (
-                              <span style={{ display: 'flex', gap: 6 }}>
-                                <button onClick={() => deleteEntry(e.id)} style={{ background: 'var(--coral)', color: '#fff', border: 'none', borderRadius: 3, padding: '3px 8px', fontSize: 11 }}>Delete</button>
-                                <button onClick={() => setConfirmDeleteId(null)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
-                              </span>
-                            ) : (
-                              <button onClick={() => setConfirmDeleteId(e.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>Delete</button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {monthGroups.map((g) => {
+                  const isOpen = expandedMonth === g.month;
+                  const catMap = {};
+                  g.entries.forEach((e) => { catMap[e.category] = (catMap[e.category] || 0) + Number(e.usd); });
+                  const catData = Object.entries(catMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+                  return (
+                    <div key={g.month} style={{ border: '1px solid var(--paper-line)', borderRadius: 4, overflow: 'hidden' }}>
+                      <button
+                        onClick={() => setExpandedMonth(isOpen ? null : g.month)}
+                        style={{
+                          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          gap: 16, padding: '14px 18px', background: isOpen ? 'var(--card)' : 'transparent',
+                          border: 'none', textAlign: 'left', flexWrap: 'wrap',
+                        }}
+                      >
+                        <span style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                          <span style={{ fontFamily: "'Source Serif 4', serif", fontWeight: 600, fontSize: 17 }}>{monthLabel(g.month)}</span>
+                          <span style={{ color: 'var(--slate)', fontSize: 12 }}>{g.entries.length} {g.entries.length === 1 ? 'entry' : 'entries'}</span>
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 18, fontSize: 13 }}>
+                          <span style={{ color: 'var(--green)' }}>+{fmtUSD(g.income + g.profit)}</span>
+                          <span style={{ color: 'var(--coral)' }}>-{fmtUSD(g.expense + g.investment)}</span>
+                          <span style={{ fontWeight: 700, color: g.net >= 0 ? 'var(--green)' : 'var(--coral)' }}>{fmtUSD(g.net)}</span>
+                          <span style={{ color: 'var(--slate)' }}>{isOpen ? '▲' : '▼'}</span>
+                        </span>
+                      </button>
+
+                      {isOpen && (
+                        <div style={{ borderTop: '1px solid var(--paper-line)' }}>
+                          {catData.length > 0 && (
+                            <div style={{ padding: '16px 18px 0' }}>
+                              <ResponsiveContainer width="100%" height={180}>
+                                <PieChart>
+                                  <Pie data={catData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={65} label={({ name }) => name}>
+                                    {catData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                                  </Pie>
+                                  <Tooltip formatter={(v) => fmtUSD(v)} />
+                                </PieChart>
+                              </ResponsiveContainer>
+                            </div>
+                          )}
+                          <div style={{ overflow: 'auto' }}>
+                            <table>
+                              <thead>
+                                <tr>
+                                  {['Date', 'Type', 'Category', 'Where', 'LBP', 'USD', 'Notes', ''].map((h) => <th key={h}>{h}</th>)}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {g.entries.map((e) => {
+                                  const typeInfo = TYPES.find((t) => t.key === e.type);
+                                  return (
+                                    <tr key={e.id}>
+                                      <td>{e.entry_date}</td>
+                                      <td><span style={{ color: typeInfo.color, fontWeight: 600 }}>{typeInfo.label}</span></td>
+                                      <td>{e.category}</td>
+                                      <td>{e.where_text || '—'}</td>
+                                      <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtLBP(e.lbp)}</td>
+                                      <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(e.usd)}</td>
+                                      <td style={{ color: 'var(--slate)' }}>{e.notes || '—'}</td>
+                                      <td>
+                                        {confirmDeleteId === e.id ? (
+                                          <span style={{ display: 'flex', gap: 6 }}>
+                                            <button onClick={() => deleteEntry(e.id)} style={{ background: 'var(--coral)', color: '#fff', border: 'none', borderRadius: 3, padding: '3px 8px', fontSize: 11 }}>Delete</button>
+                                            <button onClick={() => setConfirmDeleteId(null)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
+                                          </span>
+                                        ) : (
+                                          <button onClick={() => setConfirmDeleteId(e.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>Delete</button>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -396,6 +479,37 @@ export default function Dashboard() {
                 </BarChart>
               </ResponsiveContainer>
             </ChartCard>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginTop: 24 }}>
+              <ChartCard title="Net position over time">
+                {trend.length < 2 ? <NoData /> : (
+                  <ResponsiveContainer width="100%" height={240}>
+                    <LineChart data={trend}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--paper-line)" />
+                      <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                      <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `$${v}`} />
+                      <Tooltip formatter={(v) => fmtUSD(v)} />
+                      <Line type="monotone" dataKey="net" name="Net position" stroke="#B8894C" strokeWidth={2} dot={{ r: 3 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </ChartCard>
+              <ChartCard title="Income vs. expenses trend">
+                {trend.length < 2 ? <NoData /> : (
+                  <ResponsiveContainer width="100%" height={240}>
+                    <LineChart data={trend}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--paper-line)" />
+                      <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                      <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `$${v}`} />
+                      <Tooltip formatter={(v) => fmtUSD(v)} />
+                      <Legend />
+                      <Line type="monotone" dataKey="income" name="Income" stroke="#3F6E52" strokeWidth={2} dot={{ r: 3 }} />
+                      <Line type="monotone" dataKey="expense" name="Expense" stroke="#B0463F" strokeWidth={2} dot={{ r: 3 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </ChartCard>
+            </div>
           </div>
           )
         )}
@@ -408,7 +522,7 @@ function KpiCard({ label, value, color, bold }) {
   return (
     <div style={{ border: '1px solid var(--paper-line)', borderRadius: 4, padding: 16, background: 'var(--card)' }}>
       <div style={{ color: 'var(--slate)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>{label}</div>
-      <div style={{ fontFamily: "'Fraunces', serif", fontWeight: bold ? 700 : 600, fontSize: 22, color }}>{value}</div>
+      <div style={{ fontFamily: "'Source Serif 4', serif", fontWeight: bold ? 700 : 600, fontSize: 22, color }}>{value}</div>
     </div>
   );
 }
