@@ -1,0 +1,74 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --ink: #1C2B39;
+  --paper: #F7F4EC;
+  --paper-line: #E4DFCF;
+  --card: #FFFEFA;
+  --gold: #B8894C;
+  --coral: #B0463F;
+  --green: #3F6E52;
+  --blue: #4C7A9E;
+  --slate: #5B6B7A;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'IBM Plex Sans', -apple-system, sans-serif;
+}
+
+h1, h2, h3 { font-family: 'Fraunces', serif; margin: 0; }
+
+input, select, button {
+  font-family: 'IBM Plex Sans', sans-serif;
+}
+
+input, select {
+  padding: 10px 12px;
+  border: 1px solid var(--paper-line);
+  border-radius: 4px;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--card);
+  width: 100%;
+}
+
+button {
+  font-size: 14px;
+  cursor: pointer;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+td, th {
+  padding: 9px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+thead tr {
+  background: var(--ink);
+  color: var(--paper);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+tbody tr {
+  border-bottom: 1px solid var(--paper-line);
+}
+tbody tr:nth-child(even) {
+  background: var(--paper);
+}
+tbody tr:nth-child(odd) {
+  background: var(--card);
+}
