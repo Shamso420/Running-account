@@ -118,6 +118,7 @@ export default function Dashboard() {
   const [loadError, setLoadError] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [filterType, setFilterType] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [expandedMonth, setExpandedMonth] = useState(null);
   const [sellingEntry, setSellingEntry] = useState(null);
   const [invoiceEntry, setInvoiceEntry] = useState(null);
@@ -421,10 +422,17 @@ export default function Dashboard() {
     });
   }, [monthly]);
 
-  const visibleEntries = useMemo(
-    () => (filterType === 'all' ? entries : entries.filter((e) => e.type === filterType)),
-    [entries, filterType]
-  );
+  const visibleEntries = useMemo(() => {
+    let result = filterType === 'all' ? entries : entries.filter((e) => e.type === filterType);
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      result = result.filter((e) => {
+        const haystack = [e.category, e.where_text, e.notes, e.entry_date].filter(Boolean).join(' ').toLowerCase();
+        return haystack.includes(q);
+      });
+    }
+    return result;
+  }, [entries, filterType, searchQuery]);
 
   const monthGroups = useMemo(() => {
     const m = {};
@@ -680,12 +688,32 @@ export default function Dashboard() {
 
         {tab === 'ledger' && (
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
               <p style={{ color: 'var(--slate)', fontSize: 14, margin: 0 }}>Grouped by month — tap a month to see its entries.</p>
-              <select value={filterType} onChange={(e) => setFilterType(e.target.value)} style={{ width: 'auto', padding: '7px 10px', fontSize: 13 }}>
-                <option value="all">All types</option>
-                {TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
-              </select>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="text"
+                    placeholder="Search category, notes, where…"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    style={{ width: 220, padding: '7px 30px 7px 10px', fontSize: 13 }}
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      aria-label="Clear search"
+                      style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--slate)', fontSize: 15, lineHeight: 1, padding: 4, cursor: 'pointer' }}
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+                <select value={filterType} onChange={(e) => setFilterType(e.target.value)} style={{ width: 'auto', padding: '7px 10px', fontSize: 13 }}>
+                  <option value="all">All types</option>
+                  {TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+                </select>
+              </div>
             </div>
 
             {monthGroups.length === 0 ? (
@@ -1082,12 +1110,9 @@ export default function Dashboard() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <h1 style={{ fontSize: 30, fontWeight: 800, color: '#12202b', letterSpacing: '0.01em' }}>INVOICE</h1>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
-                    <svg width="34" height="34" viewBox="0 0 34 34" style={{ flexShrink: 0 }}>
-                      <circle cx="12" cy="17" r="10" fill="none" stroke="#1f5fa8" strokeWidth="4" />
-                      <circle cx="23" cy="17" r="7" fill="none" stroke="#5fb8d9" strokeWidth="4" />
-                    </svg>
-                    <span style={{ fontFamily: "'Source Serif 4', serif", fontStyle: 'italic', fontWeight: 700, fontSize: 19, color: '#12202b' }}>360 CELL</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+                    <span style={{ fontFamily: "'Source Serif 4', serif", fontStyle: 'italic', fontWeight: 800, fontSize: 22, background: 'linear-gradient(120deg, #1f5fa8, #5fb8d9)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>360</span>
+                    <span style={{ fontFamily: "'Source Serif 4', serif", fontStyle: 'italic', fontWeight: 700, fontSize: 19, color: '#12202b' }}>CELL</span>
                   </div>
                   <div style={{ fontSize: 12, fontWeight: 700, color: '#12202b', marginTop: 6 }}>Phone: +961 81 055 797</div>
                 </div>
