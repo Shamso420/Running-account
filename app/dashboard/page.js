@@ -15,6 +15,7 @@ const emptyForm = () => ({
   type: 'expense',
   category: '',
   where: '',
+  customerId: null,
   amount: '',
   currency: 'LBP',
   notes: '',
@@ -106,6 +107,13 @@ export default function Dashboard() {
   const [goalSaving, setGoalSaving] = useState(false);
   const [goalError, setGoalError] = useState('');
   const [allEntries, setAllEntries] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [customerModalOpen, setCustomerModalOpen] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [newCustomerName, setNewCustomerName] = useState('');
+  const [newCustomerPhone, setNewCustomerPhone] = useState('');
+  const [customerError, setCustomerError] = useState('');
+  const [creatingCustomer, setCreatingCustomer] = useState(false);
   const entries = useMemo(
     () => (useRoles && role !== 'admin' ? allEntries.filter((e) => !e.private) : allEntries),
     [allEntries, useRoles, role]
@@ -168,6 +176,12 @@ export default function Dashboard() {
       if (error) setLoadError(error.message);
       else setAllEntries(data || []);
 
+      const { data: customersData } = await supabase
+        .from('customers')
+        .select('*')
+        .order('code', { ascending: true });
+      setCustomers(customersData || []);
+
       if (profile?.plan === 'business') {
         const { data: goalsData } = await supabase
           .from('goals')
@@ -209,6 +223,40 @@ export default function Dashboard() {
     if (typeof window !== 'undefined') sessionStorage.removeItem('rat_role');
   };
 
+  const selectCustomer = (customer) => {
+    setForm((f) => ({ ...f, where: `${customer.name} (${customer.code})`, customerId: customer.id }));
+    setCustomerModalOpen(false);
+    setCustomerSearch('');
+  };
+
+  const clearCustomer = () => {
+    setForm((f) => ({ ...f, where: '', customerId: null }));
+  };
+
+  const createCustomer = async () => {
+    if (!newCustomerName.trim()) { setCustomerError('Enter a name.'); return; }
+    setCreatingCustomer(true);
+    setCustomerError('');
+    const maxCode = customers.reduce((max, c) => Math.max(max, parseInt(c.code, 10) || 0), 0);
+    const nextCode = String(maxCode + 1).padStart(5, '0');
+    const { data, error } = await supabase
+      .from('customers')
+      .insert({
+        user_id: session.user.id,
+        code: nextCode,
+        name: newCustomerName.trim(),
+        phone: newCustomerPhone.trim() || null,
+      })
+      .select()
+      .single();
+    setCreatingCustomer(false);
+    if (error) { setCustomerError('Could not save: ' + error.message); return; }
+    setCustomers((prev) => [...prev, data].sort((a, b) => a.code.localeCompare(b.code)));
+    setNewCustomerName('');
+    setNewCustomerPhone('');
+    selectCustomer(data);
+  };
+
   const addEntry = async (e) => {
     e.preventDefault();
     const amt = parseFloat(form.amount);
@@ -230,6 +278,7 @@ export default function Dashboard() {
         amount_raw: amt,
         usd, lbp,
         debt_direction: form.type === 'debt' ? form.debtDirection : null,
+        customer_id: form.customerId || null,
         private: useRoles && role === 'admin' ? !!form.private : false,
       })
       .select()
@@ -650,11 +699,28 @@ export default function Dashboard() {
                   {CATEGORY_SUGGESTIONS[form.type].map((c) => <option key={c} value={c} />)}
                 </datalist>
               </label>
-              <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
-                Where / with whom
-                <input placeholder="e.g. Spinneys, dispatcher, broker name" value={form.where}
-                  onChange={(e) => setForm((f) => ({ ...f, where: e.target.value }))} style={{ marginTop: 6 }} />
-              </label>
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, marginBottom: 6 }}>Customer</div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div style={{
+                    flex: 1, padding: '10px 12px', border: '1px solid var(--paper-line)', borderRadius: 4,
+                    fontSize: 14, color: form.customerId ? 'var(--ink)' : 'var(--slate)', background: 'var(--card)',
+                  }}>
+                    {form.where || 'No customer selected'}
+                  </div>
+                  <button type="button" onClick={() => setCustomerModalOpen(true)} style={{
+                    padding: '10px 14px', border: '1px solid var(--paper-line)', borderRadius: 4,
+                    background: 'transparent', color: 'var(--ink)', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap',
+                  }}>
+                    Select customer
+                  </button>
+                  {form.customerId && (
+                    <button type="button" onClick={clearCustomer} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 18, padding: '0 4px' }}>
+                      ×
+                    </button>
+                  )}
+                </div>
+              </div>
               <div style={{ display: 'flex', gap: 12 }}>
                 <label style={{ flex: 1, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
                   Amount
@@ -1211,6 +1277,80 @@ export default function Dashboard() {
               background: 'linear-gradient(120deg, #cdeee3 0%, #a9d9dd 55%, #8fcbe0 100%)',
               clipPath: 'polygon(0 40%, 100% 0, 100% 100%, 0 100%)',
             }} />
+          </div>
+        </div>
+      )}
+
+      {customerModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,43,57,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 55 }}>
+          <div style={{ background: 'var(--card)', width: '100%', maxWidth: 480, maxHeight: '85vh', overflowY: 'auto', borderRadius: '8px 8px 0 0', padding: '22px 22px 28px', boxShadow: '0 -8px 30px rgba(0,0,0,0.2)' }}>
+            <h3 style={{ fontSize: 17, marginBottom: 16 }}>Select customer</h3>
+
+            <input
+              type="text"
+              placeholder="Search by name or code…"
+              value={customerSearch}
+              onChange={(e) => setCustomerSearch(e.target.value)}
+              autoFocus
+              style={{ marginBottom: 14 }}
+            />
+
+            <div style={{ maxHeight: 220, overflowY: 'auto', border: customers.length ? '1px solid var(--paper-line)' : 'none', borderRadius: 4, marginBottom: 20 }}>
+              {customers
+                .filter((c) => {
+                  const q = customerSearch.trim().toLowerCase();
+                  if (!q) return true;
+                  return c.name.toLowerCase().includes(q) || c.code.includes(q);
+                })
+                .map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => selectCustomer(c)}
+                    style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%',
+                      padding: '10px 12px', background: 'transparent', border: 'none', borderBottom: '1px solid var(--paper-line)',
+                      textAlign: 'left', cursor: 'pointer',
+                    }}
+                  >
+                    <span style={{ fontSize: 14, color: 'var(--ink)' }}>{c.name}</span>
+                    <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: 'var(--gold)' }}>{c.code}</span>
+                  </button>
+                ))}
+              {customers.length > 0 && customers.filter((c) => {
+                const q = customerSearch.trim().toLowerCase();
+                if (!q) return true;
+                return c.name.toLowerCase().includes(q) || c.code.includes(q);
+              }).length === 0 && (
+                <div style={{ padding: '14px 12px', fontSize: 13, color: 'var(--slate)' }}>No matches.</div>
+              )}
+              {customers.length === 0 && (
+                <div style={{ padding: '4px 0 14px', fontSize: 13, color: 'var(--slate)' }}>No customers yet — create the first one below.</div>
+              )}
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--paper-line)', paddingTop: 16 }}>
+              <h4 style={{ fontSize: 14, marginBottom: 12 }}>+ New customer</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <input placeholder="Name" value={newCustomerName} onChange={(e) => setNewCustomerName(e.target.value)} />
+                <input placeholder="Phone number" value={newCustomerPhone} onChange={(e) => setNewCustomerPhone(e.target.value)} />
+                {customerError && <div style={{ color: 'var(--coral)', fontSize: 13 }}>{customerError}</div>}
+                <button type="button" onClick={createCustomer} disabled={creatingCustomer} style={{
+                  padding: '11px 16px', border: 'none', borderRadius: 4,
+                  background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600, opacity: creatingCustomer ? 0.6 : 1,
+                }}>
+                  {creatingCustomer ? 'Creating…' : 'Create customer'}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => { setCustomerModalOpen(false); setCustomerSearch(''); setCustomerError(''); }}
+              style={{ width: '100%', marginTop: 16, padding: '11px 16px', border: '1px solid var(--paper-line)', borderRadius: 4, background: 'transparent', color: 'var(--slate)', fontWeight: 600 }}
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
