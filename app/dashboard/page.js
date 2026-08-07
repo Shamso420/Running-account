@@ -19,6 +19,7 @@ const emptyForm = () => ({
   currency: 'LBP',
   notes: '',
   debtDirection: 'owed_to_me',
+  private: false,
 });
 
 const PIE_COLORS = ['#B8894C', '#B0463F', '#3F6E52', '#4C7A9E', '#8A6BA8', '#C48A3F', '#6B8F8A', '#9E6B5C'];
@@ -93,7 +94,11 @@ export default function Dashboard() {
   const [goalForm, setGoalForm] = useState({ label: '', period: 'weekly', metric: 'income_plus_profit', amount: '', currency: 'USD' });
   const [goalSaving, setGoalSaving] = useState(false);
   const [goalError, setGoalError] = useState('');
-  const [entries, setEntries] = useState([]);
+  const [allEntries, setAllEntries] = useState([]);
+  const entries = useMemo(
+    () => (useRoles && role !== 'admin' ? allEntries.filter((e) => !e.private) : allEntries),
+    [allEntries, useRoles, role]
+  );
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('add');
   const [form, setForm] = useState(emptyForm());
@@ -148,7 +153,7 @@ export default function Dashboard() {
         .select('*')
         .order('entry_date', { ascending: false });
       if (error) setLoadError(error.message);
-      else setEntries(data || []);
+      else setAllEntries(data || []);
 
       if (profile?.plan === 'business') {
         const { data: goalsData } = await supabase
@@ -212,12 +217,13 @@ export default function Dashboard() {
         amount_raw: amt,
         usd, lbp,
         debt_direction: form.type === 'debt' ? form.debtDirection : null,
+        private: useRoles && role === 'admin' ? !!form.private : false,
       })
       .select()
       .single();
     setSaving(false);
     if (error) { setFormError('Could not save: ' + error.message); return; }
-    setEntries((prev) => [data, ...prev].sort((a, b) => b.entry_date.localeCompare(a.entry_date)));
+    setAllEntries((prev) => [data, ...prev].sort((a, b) => b.entry_date.localeCompare(a.entry_date)));
     setForm((f) => ({ ...emptyForm(), type: f.type, currency: f.currency }));
   };
 
@@ -273,7 +279,7 @@ export default function Dashboard() {
     setSelling(false);
     if (updateError) { setSellError('Sale logged, but could not update the item: ' + updateError.message); return; }
 
-    setEntries((prev) => [
+    setAllEntries((prev) => [
       profitEntry,
       ...prev.map((e) => (e.id === updatedAsset.id ? updatedAsset : e)),
     ].sort((a, b) => b.entry_date.localeCompare(a.entry_date)));
@@ -287,7 +293,7 @@ export default function Dashboard() {
       .eq('id', id)
       .select()
       .single();
-    if (!error) setEntries((prev) => prev.map((e) => (e.id === id ? data : e)));
+    if (!error) setAllEntries((prev) => prev.map((e) => (e.id === id ? data : e)));
   };
 
   const addGoal = async (e) => {
@@ -322,7 +328,7 @@ export default function Dashboard() {
 
   const deleteEntry = async (id) => {
     const { error } = await supabase.from('entries').delete().eq('id', id);
-    if (!error) setEntries((prev) => prev.filter((e) => e.id !== id));
+    if (!error) setAllEntries((prev) => prev.filter((e) => e.id !== id));
     setConfirmDeleteId(null);
   };
 
@@ -601,6 +607,21 @@ export default function Dashboard() {
                 </div>
               )}
 
+              {useRoles && role === 'admin' && (
+                <label style={{
+                  display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--slate)',
+                  border: '1px solid var(--paper-line)', borderRadius: 4, padding: '10px 12px', cursor: 'pointer',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={form.private}
+                    onChange={(e) => setForm((f) => ({ ...f, private: e.target.checked }))}
+                    style={{ width: 'auto' }}
+                  />
+                  <span>Private — only visible to Admin</span>
+                </label>
+              )}
+
               <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
                 Category
                 <input list="cat-suggestions" placeholder="e.g. Rent, Stocks, Salary" value={form.category}
@@ -721,6 +742,11 @@ export default function Dashboard() {
                                       <td><span style={{ color: typeInfo.color, fontWeight: 600 }}>{typeInfo.label}</span></td>
                                       <td>
                                         {e.category}
+                                        {e.private && (
+                                          <span style={{ marginLeft: 6, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#8A6BA8', border: '1px solid #8A6BA8', borderRadius: 3, padding: '1px 5px' }}>
+                                            Private
+                                          </span>
+                                        )}
                                         {isSoldAsset && (
                                           <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 2 }}>
                                             Sold {e.sold_date} for {fmtUSD(e.sold_usd)} · <span style={{ color: assetProfit >= 0 ? 'var(--green)' : 'var(--coral)', fontWeight: 600 }}>{assetProfit >= 0 ? '+' : ''}{fmtUSD(assetProfit)}</span>
