@@ -77,6 +77,17 @@ function computeAchieved(goal, entries) {
   }, 0);
 }
 
+function invoiceNumber(entry) {
+  return `INV-${entry.entry_date.replace(/-/g, '')}-${entry.id.slice(0, 6).toUpperCase()}`;
+}
+
+function invoiceDateStr(dateStr) {
+  const [y, m, d] = dateStr.split('-');
+  return `${Number(d)}-${Number(m)}-${y.slice(2)}`;
+}
+
+const BOUGHT_FROM_TYPES = ['expense', 'investment'];
+
 export default function Dashboard() {
   const router = useRouter();
   const [session, setSession] = useState(undefined); // undefined = loading, null = no session
@@ -109,6 +120,7 @@ export default function Dashboard() {
   const [filterType, setFilterType] = useState('all');
   const [expandedMonth, setExpandedMonth] = useState(null);
   const [sellingEntry, setSellingEntry] = useState(null);
+  const [invoiceEntry, setInvoiceEntry] = useState(null);
   const [sellForm, setSellForm] = useState({ amount: '', currency: 'USD', date: new Date().toISOString().slice(0, 10) });
   const [sellError, setSellError] = useState('');
   const [selling, setSelling] = useState(false);
@@ -764,6 +776,7 @@ export default function Dashboard() {
                                       <td style={{ color: 'var(--slate)' }}>{e.notes || '—'}</td>
                                       <td>
                                         <span style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                                          <button onClick={() => setInvoiceEntry(e)} style={{ background: 'none', border: '1px solid var(--blue)', color: 'var(--blue)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Invoice</button>
                                           {canEdit && isActiveAsset && (
                                             <button onClick={() => openSell(e)} style={{ background: 'none', border: '1px solid var(--gold)', color: 'var(--gold)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Sell</button>
                                           )}
@@ -1041,6 +1054,138 @@ export default function Dashboard() {
                 {selling ? 'Saving…' : 'Confirm sale'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {invoiceEntry && (
+        <div className="invoice-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(28,43,57,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, padding: 20 }}>
+          <style>{`
+            @media print {
+              body * { visibility: hidden; }
+              .invoice-print, .invoice-print * { visibility: visible; }
+              .invoice-print { position: fixed; inset: 0; margin: 0; box-shadow: none !important; border-radius: 0 !important; }
+              .invoice-overlay { position: static !important; background: none !important; padding: 0 !important; }
+              .no-print { display: none !important; }
+            }
+          `}</style>
+          <div className="invoice-print" style={{
+            background: '#fff', width: '100%', maxWidth: 620, maxHeight: '92vh', overflowY: 'auto',
+            borderRadius: 6, position: 'relative', boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
+          }}>
+            {/* Top diagonal teal band */}
+            <div style={{
+              position: 'relative', padding: '32px 36px 26px',
+              background: 'linear-gradient(120deg, #cdeee3 0%, #a9d9dd 55%, #8fcbe0 100%)',
+              clipPath: 'polygon(0 0, 100% 0, 100% 78%, 0 100%)',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <h1 style={{ fontSize: 30, fontWeight: 800, color: '#12202b', letterSpacing: '0.01em' }}>INVOICE</h1>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
+                    <svg width="34" height="34" viewBox="0 0 34 34" style={{ flexShrink: 0 }}>
+                      <circle cx="12" cy="17" r="10" fill="none" stroke="#1f5fa8" strokeWidth="4" />
+                      <circle cx="23" cy="17" r="7" fill="none" stroke="#5fb8d9" strokeWidth="4" />
+                    </svg>
+                    <span style={{ fontFamily: "'Source Serif 4', serif", fontStyle: 'italic', fontWeight: 700, fontSize: 19, color: '#12202b' }}>360 CELL</span>
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#12202b', marginTop: 6 }}>Phone: +961 81 055 797</div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 48, marginTop: 22 }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#12202b' }}>DATE</div>
+                  <div style={{ fontSize: 14, color: '#12202b', marginTop: 2 }}>{invoiceDateStr(invoiceEntry.entry_date)}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#12202b' }}>INVOICE NO</div>
+                  <div style={{ fontSize: 14, color: '#12202b', marginTop: 2 }}>{invoiceNumber(invoiceEntry)}</div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 20 }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#12202b' }}>Bought from:</div>
+                  <div style={{ fontSize: 13, color: '#12202b', marginTop: 2 }}>
+                    {(BOUGHT_FROM_TYPES.includes(invoiceEntry.type) || (invoiceEntry.type === 'debt' && invoiceEntry.debt_direction === 'i_owe')) ? (invoiceEntry.where_text || '—') : ''}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#12202b' }}>Sold to:</div>
+                  <div style={{ fontSize: 13, color: '#12202b', marginTop: 2 }}>
+                    {(!BOUGHT_FROM_TYPES.includes(invoiceEntry.type) && !(invoiceEntry.type === 'debt' && invoiceEntry.debt_direction === 'i_owe')) ? (invoiceEntry.where_text || '—') : ''}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Details */}
+            <div style={{ padding: '10px 36px 30px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', border: '1px solid #c7c7c7', marginTop: 18 }}>
+                <div style={{ padding: '10px 12px', borderRight: '1px solid #c7c7c7' }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: '#12202b' }}>TYPE</div>
+                  <div style={{ fontSize: 13, marginTop: 2 }}>{TYPES.find((t) => t.key === invoiceEntry.type)?.label}</div>
+                </div>
+                <div style={{ padding: '10px 12px', borderRight: '1px solid #c7c7c7' }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: '#12202b' }}>CATEGORY</div>
+                  <div style={{ fontSize: 13, marginTop: 2 }}>{invoiceEntry.category}</div>
+                </div>
+                <div style={{ padding: '10px 12px' }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: '#12202b' }}>DUE DATE</div>
+                  <div style={{ fontSize: 13, marginTop: 2 }}>{invoiceDateStr(invoiceEntry.entry_date)}</div>
+                </div>
+              </div>
+
+              <table style={{ width: '100%', marginTop: 26, borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid #12202b' }}>
+                    <th style={{ textAlign: 'left', fontSize: 11, fontWeight: 800, color: '#1c6b52', padding: '0 0 8px' }}>SERIAL NUMBER</th>
+                    <th style={{ textAlign: 'left', fontSize: 11, fontWeight: 800, color: '#1c6b52', padding: '0 0 8px' }}>DESCRIPTION</th>
+                    <th style={{ textAlign: 'right', fontSize: 11, fontWeight: 800, color: '#1c6b52', padding: '0 0 8px' }}>UNIT PRICE</th>
+                    <th style={{ textAlign: 'right', fontSize: 11, fontWeight: 800, color: '#1c6b52', padding: '0 0 8px' }}>LINE TOTAL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b' }}>{invoiceEntry.id.slice(0, 8).toUpperCase()}</td>
+                    <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b' }}>{invoiceEntry.category}{invoiceEntry.notes ? ` — ${invoiceEntry.notes}` : ''}</td>
+                    <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b', textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(invoiceEntry.usd)}</td>
+                    <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b', textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(invoiceEntry.usd)}</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 26 }}>
+                <div style={{ width: 220 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 13 }}>
+                    <span>Subtotal</span><span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(invoiceEntry.usd)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 13 }}>
+                    <span>Sales Tax</span><span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(0)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: 15, fontWeight: 700, borderTop: '1px solid #12202b', marginTop: 4 }}>
+                    <span>Total</span><span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(invoiceEntry.usd)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="no-print" style={{ display: 'flex', gap: 10, marginTop: 30 }}>
+                <button onClick={() => setInvoiceEntry(null)} style={{ flex: 1, padding: '11px 16px', border: '1px solid var(--paper-line)', borderRadius: 4, background: 'transparent', color: 'var(--slate)', fontWeight: 600 }}>
+                  Close
+                </button>
+                <button onClick={() => window.print()} style={{ flex: 1, padding: '11px 16px', border: 'none', borderRadius: 4, background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600 }}>
+                  Print / Save as PDF
+                </button>
+              </div>
+            </div>
+
+            {/* Bottom diagonal accent */}
+            <div style={{
+              height: 26,
+              background: 'linear-gradient(120deg, #cdeee3 0%, #a9d9dd 55%, #8fcbe0 100%)',
+              clipPath: 'polygon(0 40%, 100% 0, 100% 100%, 0 100%)',
+            }} />
           </div>
         </div>
       )}
