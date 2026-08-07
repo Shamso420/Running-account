@@ -81,6 +81,14 @@ export default function Dashboard() {
   const [session, setSession] = useState(undefined); // undefined = loading, null = no session
   const [isAdmin, setIsAdmin] = useState(false);
   const [plan, setPlan] = useState('free');
+  const [useRoles, setUseRoles] = useState(false);
+  const [role, setRole] = useState(null);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [checkingPin, setCheckingPin] = useState(false);
+
+  const canEdit = !useRoles || role === 'admin';
+  const canAdd = !useRoles || role === 'admin' || role === 'entry';
   const [goals, setGoals] = useState([]);
   const [goalForm, setGoalForm] = useState({ label: '', period: 'weekly', metric: 'income_plus_profit', amount: '', currency: 'USD' });
   const [goalSaving, setGoalSaving] = useState(false);
@@ -121,11 +129,19 @@ export default function Dashboard() {
       setLoading(true);
       const { data: profile } = await supabase
         .from('profiles')
-        .select('is_admin, plan')
+        .select('is_admin, plan, use_roles')
         .eq('id', session.user.id)
         .single();
       setIsAdmin(!!profile?.is_admin);
       setPlan(profile?.plan || 'free');
+      setUseRoles(!!profile?.use_roles);
+
+      if (profile?.use_roles) {
+        const savedRole = typeof window !== 'undefined' ? sessionStorage.getItem('rat_role') : null;
+        if (savedRole === 'admin' || savedRole === 'entry' || savedRole === 'viewer') {
+          setRole(savedRole);
+        }
+      }
 
       const { data, error } = await supabase
         .from('entries')
@@ -147,7 +163,32 @@ export default function Dashboard() {
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    if (typeof window !== 'undefined') sessionStorage.removeItem('rat_role');
     router.replace('/login');
+  };
+
+  const checkPin = async (e) => {
+    e.preventDefault();
+    if (!pinInput.trim()) return;
+    setCheckingPin(true);
+    setPinError('');
+    const { data, error } = await supabase.rpc('check_role_pin', { p_pin: pinInput.trim() });
+    setCheckingPin(false);
+    if (error || !data) {
+      setPinError('Incorrect PIN.');
+      setPinInput('');
+      return;
+    }
+    setRole(data);
+    if (typeof window !== 'undefined') sessionStorage.setItem('rat_role', data);
+    setPinInput('');
+  };
+
+  const switchRole = () => {
+    setRole(null);
+    setPinInput('');
+    setPinError('');
+    if (typeof window !== 'undefined') sessionStorage.removeItem('rat_role');
   };
 
   const addEntry = async (e) => {
@@ -410,8 +451,49 @@ export default function Dashboard() {
     }
   }, [monthGroups]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!loading && !canAdd && tab === 'add') setTab('ledger');
+  }, [canAdd, loading, tab]);
+
   if (session === undefined || loading) {
     return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading…</div>;
+  }
+
+  if (useRoles && !role) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div style={{ maxWidth: 360, width: '100%', border: '1px solid var(--paper-line)', borderRadius: 6, padding: 28, background: 'var(--card)' }}>
+          <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: '0.14em', color: 'var(--gold)', textTransform: 'uppercase', marginBottom: 8 }}>
+            Ledger No. 02
+          </div>
+          <h1 style={{ fontSize: 22, marginBottom: 6 }}>Enter your PIN</h1>
+          <p style={{ color: 'var(--slate)', fontSize: 13, marginTop: 0, marginBottom: 20 }}>
+            This account is shared. Your PIN determines what you can see and do.
+          </p>
+          <form onSubmit={checkPin} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <input
+              type="password"
+              inputMode="numeric"
+              placeholder="PIN"
+              value={pinInput}
+              onChange={(e) => setPinInput(e.target.value)}
+              autoFocus
+              style={{ textAlign: 'center', fontSize: 18, letterSpacing: '0.2em' }}
+            />
+            {pinError && <div style={{ color: 'var(--coral)', fontSize: 13 }}>{pinError}</div>}
+            <button type="submit" disabled={checkingPin} style={{
+              padding: '11px 16px', border: 'none', borderRadius: 4,
+              background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600, opacity: checkingPin ? 0.6 : 1,
+            }}>
+              {checkingPin ? 'Checking…' : 'Continue'}
+            </button>
+          </form>
+          <button onClick={signOut} style={{ marginTop: 16, background: 'none', border: 'none', color: 'var(--slate)', fontSize: 12, textDecoration: 'underline' }}>
+            Sign out
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -427,8 +509,17 @@ export default function Dashboard() {
           </div>
           <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: 'var(--slate)', textAlign: 'right' }}>
             {session.user.email}<br />
+            {useRoles && role && <span style={{ color: '#8A6BA8', textTransform: 'capitalize' }}>{role} · </span>}
             {isAdmin && <Link href="/admin" style={{ color: 'var(--gold)' }}>Admin view</Link>}
             {isAdmin && ' · '}
+            {useRoles && (
+              <>
+                <button onClick={switchRole} style={{ background: 'none', border: 'none', color: 'var(--slate)', textDecoration: 'underline', cursor: 'pointer', fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, padding: 0 }}>
+                  Switch role
+                </button>
+                {' · '}
+              </>
+            )}
             <button onClick={signOut} style={{ background: 'none', border: 'none', color: 'var(--slate)', textDecoration: 'underline', cursor: 'pointer', fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, padding: 0 }}>
               Sign out
             </button>
@@ -437,7 +528,7 @@ export default function Dashboard() {
 
         <nav style={{ maxWidth: 1080, margin: '20px auto 0', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
           {[
-            { key: 'add', label: 'Add entry' },
+            ...(canAdd ? [{ key: 'add', label: 'Add entry' }] : []),
             { key: 'ledger', label: 'Ledger' },
             { key: 'dashboard', label: 'Dashboard' },
             ...(plan === 'business' ? [{ key: 'goals', label: 'Goals' }] : []),
@@ -647,20 +738,20 @@ export default function Dashboard() {
                                       <td style={{ color: 'var(--slate)' }}>{e.notes || '—'}</td>
                                       <td>
                                         <span style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                                          {isActiveAsset && (
+                                          {canEdit && isActiveAsset && (
                                             <button onClick={() => openSell(e)} style={{ background: 'none', border: '1px solid var(--gold)', color: 'var(--gold)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Sell</button>
                                           )}
-                                          {isActiveDebt && (
+                                          {canEdit && isActiveDebt && (
                                             <button onClick={() => settleDebt(e.id)} style={{ background: 'none', border: '1px solid #8A6BA8', color: '#8A6BA8', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Settle</button>
                                           )}
-                                          {confirmDeleteId === e.id ? (
+                                          {canEdit && (confirmDeleteId === e.id ? (
                                             <span style={{ display: 'flex', gap: 6 }}>
                                               <button onClick={() => deleteEntry(e.id)} style={{ background: 'var(--coral)', color: '#fff', border: 'none', borderRadius: 3, padding: '3px 8px', fontSize: 11 }}>Delete</button>
                                               <button onClick={() => setConfirmDeleteId(null)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
                                             </span>
                                           ) : (
                                             <button onClick={() => setConfirmDeleteId(e.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>Delete</button>
-                                          )}
+                                          ))}
                                         </span>
                                       </td>
                                     </tr>
@@ -785,7 +876,7 @@ export default function Dashboard() {
                         </div>
                         <h3 style={{ fontSize: 16 }}>{g.label}</h3>
                       </div>
-                      <button onClick={() => deleteGoal(g.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 12 }}>Delete</button>
+                      {canEdit && <button onClick={() => deleteGoal(g.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 12 }}>Delete</button>}
                     </div>
 
                     <div style={{ height: 10, background: 'var(--paper-line)', borderRadius: 6, overflow: 'hidden', marginBottom: 10 }}>
@@ -816,6 +907,7 @@ export default function Dashboard() {
               </div>
             )}
 
+            {canEdit && (
             <div style={{ maxWidth: 480, border: '1px solid var(--paper-line)', borderRadius: 4, padding: 20, background: 'var(--card)' }}>
               <h3 style={{ fontSize: 15, marginBottom: 16 }}>Add a target</h3>
               <form onSubmit={addGoal} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -870,6 +962,7 @@ export default function Dashboard() {
                 </button>
               </form>
             </div>
+            )}
           </div>
         )}
       </main>
