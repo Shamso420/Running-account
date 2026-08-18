@@ -8,7 +8,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import { supabase } from '../../lib/supabaseClient';
-import { RATE, TYPES, CATEGORY_SUGGESTIONS, CUSTOMER_TYPES, saleCollectionStatus, fmtUSD, fmtLBP, toUsdLbp } from '../../lib/ledgerUtils';
+import { RATE, TYPES, CATEGORY_SUGGESTIONS, CUSTOMER_TYPES, PAYMENT_METHODS, saleCollectionStatus, fmtUSD, fmtLBP, toUsdLbp } from '../../lib/ledgerUtils';
 
 const emptyForm = () => ({
   date: new Date().toISOString().slice(0, 10),
@@ -25,6 +25,7 @@ const emptyForm = () => ({
   cost: '',
   receivedNow: '',
   supplier: '',
+  paymentMethod: 'Cash',
 });
 
 function saleProfitUsd(e) {
@@ -132,9 +133,11 @@ export default function Dashboard() {
   const [customerError, setCustomerError] = useState('');
   const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [payingEntry, setPayingEntry] = useState(null);
-  const [payForm, setPayForm] = useState({ amount: '', currency: 'USD' });
+  const [payForm, setPayForm] = useState({ amount: '', currency: 'USD', method: 'Cash' });
   const [payError, setPayError] = useState('');
   const [paying, setPaying] = useState(false);
+  const [salePayments, setSalePayments] = useState([]);
+  const [dailyDate, setDailyDate] = useState(new Date().toISOString().slice(0, 10));
   const entries = useMemo(
     () => (useRoles && role !== 'admin' ? allEntries.filter((e) => !e.private) : allEntries),
     [allEntries, useRoles, role]
@@ -202,6 +205,12 @@ export default function Dashboard() {
         .select('*')
         .order('code', { ascending: true });
       setCustomers(customersData || []);
+
+      const { data: paymentsData } = await supabase
+        .from('sale_payments')
+        .select('*')
+        .order('payment_date', { ascending: false });
+      setSalePayments(paymentsData || []);
 
       if (profile?.plan === 'business') {
         const { data: goalsData } = await supabase
@@ -292,11 +301,17 @@ export default function Dashboard() {
     setSaving(true);
     const { usd, lbp } = toUsdLbp(amt, form.currency);
     let costFields = {};
+    let initialPaymentRaw = 0;
+    let initialPaymentUsdLbp = { usd: 0, lbp: 0 };
     if (form.type === 'sale') {
       const { usd: costUsd, lbp: costLbp } = toUsdLbp(costAmt, form.currency);
       const receivedRaw = form.receivedNow.trim() === '' ? amt : parseFloat(form.receivedNow);
-      const receivedUsd = Number.isNaN(receivedRaw) ? 0 : toUsdLbp(Math.min(Math.max(receivedRaw, 0), amt), form.currency).usd;
-      costFields = { product: form.product.trim(), cost_raw: costAmt, cost_usd: costUsd, cost_lbp: costLbp, received_usd: receivedUsd, supplier_text: form.supplier.trim() };
+      initialPaymentRaw = Number.isNaN(receivedRaw) ? 0 : Math.min(Math.max(receivedRaw, 0), amt);
+      initialPaymentUsdLbp = toUsdLbp(initialPaymentRaw, form.currency);
+      costFields = {
+        product: form.product.trim(), cost_raw: costAmt, cost_usd: costUsd, cost_lbp: costLbp,
+        received_usd: initialPaymentUsdLbp.usd, supplier_text: form.supplier.trim(), payment_method: form.paymentMethod,
+      };
     }
     const { data, error } = await supabase
       .from('entries')
@@ -320,6 +335,23 @@ export default function Dashboard() {
     setSaving(false);
     if (error) { setFormError('Could not save: ' + error.message); return; }
     setAllEntries((prev) => [data, ...prev].sort((a, b) => b.entry_date.localeCompare(a.entry_date)));
+    if (form.type === 'sale' && initialPaymentRaw > 0) {
+      const { data: paymentRow } = await supabase
+        .from('sale_payments')
+        .insert({
+          user_id: session.user.id,
+          entry_id: data.id,
+          payment_date: form.date,
+          amount_raw: initialPaymentRaw,
+          currency: form.currency,
+          usd: initialPaymentUsdLbp.usd,
+          lbp: initialPaymentUsdLbp.lbp,
+          payment_method: form.paymentMethod,
+        })
+        .select()
+        .single();
+      if (paymentRow) setSalePayments((prev) => [paymentRow, ...prev]);
+    }
     setForm((f) => ({ ...emptyForm(), type: f.type, currency: f.currency }));
   };
 
@@ -380,6 +412,20 @@ export default function Dashboard() {
       profitEntry,
       ...prev.map((e) => (e.id === updatedAsset.id ? updatedAsset : e)),
     ].sort((a, b) => b.entry_date.localeCompare(a.entry_date)));
+    const { data: paymentRow } = await supabase
+      .from('sale_payments')
+      .insert({
+        user_id: session.user.id,
+        entry_id: profitEntry.id,
+        payment_date: sellForm.date,
+        amount_raw: Math.max(Math.abs(profitUsd), 0.01),
+        currency: 'USD',
+        usd: profitUsd,
+        lbp: profitLbp,
+      })
+      .select()
+      .single();
+    if (paymentRow) setSalePayments((prev) => [paymentRow, ...prev]);
     setSellingEntry(null);
   };
 
@@ -395,7 +441,7 @@ export default function Dashboard() {
 
   const openRecordPayment = (entry) => {
     setPayingEntry(entry);
-    setPayForm({ amount: '', currency: entry.currency || 'USD' });
+    setPayForm({ amount: '', currency: entry.currency || 'USD', method: 'Cash', date: new Date().toISOString().slice(0, 10) });
     setPayError('');
   };
 
@@ -404,7 +450,7 @@ export default function Dashboard() {
     if (!amt || amt <= 0) { setPayError('Enter an amount greater than zero.'); return; }
     setPaying(true);
     setPayError('');
-    const { usd: paidUsd } = toUsdLbp(amt, payForm.currency);
+    const { usd: paidUsd, lbp: paidLbp } = toUsdLbp(amt, payForm.currency);
     const newReceivedUsd = Math.min(Number(payingEntry.received_usd || 0) + paidUsd, Number(payingEntry.usd));
     const { data, error } = await supabase
       .from('entries')
@@ -412,9 +458,25 @@ export default function Dashboard() {
       .eq('id', payingEntry.id)
       .select()
       .single();
+    if (error) { setPaying(false); setPayError('Could not save: ' + error.message); return; }
+    const { data: paymentRow, error: paymentError } = await supabase
+      .from('sale_payments')
+      .insert({
+        user_id: session.user.id,
+        entry_id: payingEntry.id,
+        payment_date: payForm.date,
+        amount_raw: amt,
+        currency: payForm.currency,
+        usd: paidUsd,
+        lbp: paidLbp,
+        payment_method: payForm.method,
+      })
+      .select()
+      .single();
     setPaying(false);
-    if (error) { setPayError('Could not save: ' + error.message); return; }
+    if (paymentError) { setPayError('Payment recorded on the sale, but history could not be saved: ' + paymentError.message); }
     setAllEntries((prev) => prev.map((e) => (e.id === data.id ? data : e)));
+    if (paymentRow) setSalePayments((prev) => [paymentRow, ...prev]);
     setPayingEntry(null);
   };
 
@@ -582,6 +644,39 @@ export default function Dashboard() {
     return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   };
 
+  const dailyStats = useMemo(() => {
+    const daySales = entries.filter((e) => e.type === 'sale' && e.entry_date === dailyDate && e.product);
+    const transactions = daySales.length;
+    const revenue = daySales.reduce((s, e) => s + Number(e.usd), 0);
+    const cost = daySales.reduce((s, e) => s + Number(e.cost_usd || 0), 0);
+    const grossProfit = revenue - cost;
+    const grossMargin = revenue > 0 ? grossProfit / revenue : 0;
+    const avgProfitPerSale = transactions > 0 ? grossProfit / transactions : 0;
+    const collected = salePayments
+      .filter((p) => p.payment_date === dailyDate)
+      .reduce((s, p) => s + Number(p.usd), 0);
+    const openReceivables = revenue - collected;
+    const collectionRate = revenue > 0 ? collected / revenue : 0;
+
+    const byCategory = {};
+    daySales.forEach((e) => {
+      if (!byCategory[e.category]) byCategory[e.category] = { category: e.category, transactions: 0, revenue: 0, cost: 0, profit: 0, openBalance: 0 };
+      const c = byCategory[e.category];
+      c.transactions += 1;
+      c.revenue += Number(e.usd);
+      c.cost += Number(e.cost_usd || 0);
+      c.profit += saleProfitUsd(e);
+      c.openBalance += Number(e.usd) - Number(e.received_usd || 0);
+    });
+    const categories = Object.values(byCategory)
+      .map((c) => ({ ...c, margin: c.revenue > 0 ? c.profit / c.revenue : 0 }))
+      .sort((a, b) => b.profit - a.profit);
+    const bestCategory = categories.length ? categories[0] : null;
+    const worstCategory = categories.length ? categories[categories.length - 1] : null;
+
+    return { transactions, revenue, cost, grossProfit, grossMargin, avgProfitPerSale, collected, openReceivables, collectionRate, categories, bestCategory, worstCategory };
+  }, [entries, salePayments, dailyDate]);
+
   const goalCards = useMemo(() => {
     return goals.map((g) => {
       const achieved = computeAchieved(g, entries);
@@ -679,6 +774,7 @@ export default function Dashboard() {
             ...(canAdd ? [{ key: 'add', label: 'Add entry' }] : []),
             { key: 'ledger', label: 'Ledger' },
             { key: 'dashboard', label: 'Dashboard' },
+            { key: 'daily', label: 'Daily' },
             ...(plan === 'business' ? [{ key: 'goals', label: 'Goals' }] : []),
           ].map((t) => (
             <button key={t.key} onClick={() => setTab(t.key)} style={{
@@ -715,7 +811,7 @@ export default function Dashboard() {
             <form onSubmit={addEntry} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {TYPES.map((t) => (
-                  <button type="button" key={t.key} onClick={() => setForm((f) => ({ ...f, type: t.key, category: '', product: '', cost: '', receivedNow: '', supplier: '' }))} style={{
+                  <button type="button" key={t.key} onClick={() => setForm((f) => ({ ...f, type: t.key, category: '', product: '', cost: '', receivedNow: '', supplier: '', paymentMethod: 'Cash' }))} style={{
                     padding: '8px 14px', borderRadius: 20, cursor: 'pointer',
                     border: `1.5px solid ${form.type === t.key ? t.color : 'var(--paper-line)'}`,
                     background: form.type === t.key ? t.color + '1a' : 'transparent',
@@ -841,6 +937,12 @@ export default function Dashboard() {
                         onChange={(e) => setForm((f) => ({ ...f, receivedNow: e.target.value }))} style={{ marginTop: 6 }} />
                     </label>
                   </div>
+                  <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                    Payment method
+                    <select value={form.paymentMethod} onChange={(e) => setForm((f) => ({ ...f, paymentMethod: e.target.value }))} style={{ marginTop: 6 }}>
+                      {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </label>
                   {form.amount && form.cost !== '' && !Number.isNaN(parseFloat(form.amount)) && !Number.isNaN(parseFloat(form.cost)) && (
                     (() => {
                       const price = parseFloat(form.amount);
@@ -1130,6 +1232,58 @@ export default function Dashboard() {
           )
         )}
 
+        {tab === 'daily' && (
+          <div>
+            <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, display: 'block', marginBottom: 20, maxWidth: 220 }}>
+              Report date
+              <input type="date" value={dailyDate} onChange={(e) => setDailyDate(e.target.value)} style={{ marginTop: 6 }} />
+            </label>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 32 }}>
+              <KpiCard label="Transactions" value={dailyStats.transactions} color="var(--ink)" />
+              <KpiCard label="Revenue" value={fmtUSD(dailyStats.revenue)} color="var(--green)" />
+              <KpiCard label="Cost" value={fmtUSD(dailyStats.cost)} color="var(--coral)" />
+              <KpiCard label="Gross profit" value={fmtUSD(dailyStats.grossProfit)} color="var(--blue)" bold />
+              <KpiCard label="Gross margin" value={`${(dailyStats.grossMargin * 100).toFixed(1)}%`} color="var(--gold)" />
+              <KpiCard label="Avg profit / sale" value={fmtUSD(dailyStats.avgProfitPerSale)} color="var(--blue)" />
+              <KpiCard label="Amount collected" value={fmtUSD(dailyStats.collected)} color="var(--green)" />
+              <KpiCard label="Open receivables" value={fmtUSD(dailyStats.openReceivables)} color={dailyStats.openReceivables > 0 ? 'var(--coral)' : 'var(--green)'} />
+              <KpiCard label="Collection rate" value={`${(dailyStats.collectionRate * 100).toFixed(1)}%`} color="var(--gold)" />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 32 }}>
+              <KpiCard label="Best category" value={dailyStats.bestCategory ? dailyStats.bestCategory.category : '—'} color="var(--green)" />
+              <KpiCard label="Needs attention" value={dailyStats.worstCategory ? dailyStats.worstCategory.category : '—'} color="var(--coral)" />
+            </div>
+
+            <ChartCard title="By category">
+              {dailyStats.categories.length === 0 ? <NoData /> : (
+                <div style={{ overflow: 'auto' }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        {['Category', 'Transactions', 'Revenue', 'Profit', 'Margin', 'Open balance'].map((h) => <th key={h}>{h}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dailyStats.categories.map((c) => (
+                        <tr key={c.category}>
+                          <td>{c.category}</td>
+                          <td>{c.transactions}</td>
+                          <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(c.revenue)}</td>
+                          <td style={{ fontFamily: "'IBM Plex Mono', monospace", color: c.profit >= 0 ? 'var(--green)' : 'var(--coral)' }}>{fmtUSD(c.profit)}</td>
+                          <td>{(c.margin * 100).toFixed(1)}%</td>
+                          <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(c.openBalance)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </ChartCard>
+          </div>
+        )}
+
         {tab === 'goals' && plan === 'business' && (
           <div>
             <p style={{ color: 'var(--slate)', fontSize: 14, marginTop: 0, marginBottom: 24 }}>
@@ -1311,8 +1465,34 @@ export default function Dashboard() {
                 </select>
               </label>
             </div>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
+              <label style={{ flex: 1, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                Payment method
+                <select value={payForm.method} onChange={(e) => setPayForm((f) => ({ ...f, method: e.target.value }))} style={{ marginTop: 6 }}>
+                  {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </label>
+              <label style={{ flex: 1, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                Date
+                <input type="date" value={payForm.date} onChange={(e) => setPayForm((f) => ({ ...f, date: e.target.value }))} style={{ marginTop: 6 }} />
+              </label>
+            </div>
 
             {payError && <div style={{ color: 'var(--coral)', fontSize: 13, marginBottom: 14 }}>{payError}</div>}
+
+            {salePayments.filter((p) => p.entry_id === payingEntry.id).length > 0 && (
+              <div style={{ border: '1px solid var(--paper-line)', borderRadius: 4, marginBottom: 14, maxHeight: 140, overflowY: 'auto' }}>
+                {salePayments
+                  .filter((p) => p.entry_id === payingEntry.id)
+                  .sort((a, b) => b.payment_date.localeCompare(a.payment_date))
+                  .map((p) => (
+                    <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 10px', fontSize: 12, borderBottom: '1px solid var(--paper-line)' }}>
+                      <span style={{ color: 'var(--slate)' }}>{p.payment_date}{p.payment_method ? ` · ${p.payment_method}` : ''}</span>
+                      <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(p.usd)}</span>
+                    </div>
+                  ))}
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => setPayingEntry(null)} style={{ flex: 1, padding: '11px 16px', border: '1px solid var(--paper-line)', borderRadius: 4, background: 'transparent', color: 'var(--slate)', fontWeight: 600 }}>
