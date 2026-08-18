@@ -958,7 +958,7 @@ export default function Dashboard() {
                               </thead>
                               <tbody>
                                 {g.entries.map((e) => {
-                                  const typeInfo = TYPES.find((t) => t.key === e.type);
+                                  const typeInfo = TYPES.find((t) => t.key === e.type) || TYPES.find((t) => t.key === 'sale');
                                   const isActiveAsset = e.type === 'investment' && e.status === 'active';
                                   const isSoldAsset = e.type === 'investment' && e.status === 'sold';
                                   const isActiveDebt = e.type === 'debt' && e.status !== 'settled';
