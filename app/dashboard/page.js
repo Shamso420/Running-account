@@ -425,6 +425,8 @@ export default function Dashboard() {
         if (e.status === 'settled') return;
         if (e.debt_direction === 'i_owe') debtIOwe += Number(e.usd);
         else debtOwedToMe += Number(e.usd);
+      } else if (e.type === 'investment' && e.status === 'sold') {
+        // Cost already recovered (plus/minus profit) via the linked Sale profit entry — don't double count.
       } else {
         t[e.type] += Number(e.usd);
       }
@@ -447,7 +449,7 @@ export default function Dashboard() {
 
   const investmentByCategory = useMemo(() => {
     const m = {};
-    entries.filter((e) => e.type === 'investment').forEach((e) => { m[e.category] = (m[e.category] || 0) + Number(e.usd); });
+    entries.filter((e) => e.type === 'investment' && e.status !== 'sold').forEach((e) => { m[e.category] = (m[e.category] || 0) + Number(e.usd); });
     return Object.entries(m).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
   }, [entries]);
 
@@ -455,6 +457,7 @@ export default function Dashboard() {
     const m = {};
     entries.forEach((e) => {
       if (e.type === 'debt') return;
+      if (e.type === 'investment' && e.status === 'sold') return;
       const key = e.entry_date.slice(0, 7);
       if (!m[key]) m[key] = { month: key, income: 0, expense: 0, investment: 0, profit: 0 };
       m[key][e.type] += Number(e.usd);
@@ -494,6 +497,8 @@ export default function Dashboard() {
           if (e.debt_direction === 'i_owe') m[key].debtIOwe += Number(e.usd);
           else m[key].debtOwedToMe += Number(e.usd);
         }
+      } else if (e.type === 'investment' && e.status === 'sold') {
+        // Excluded from month totals for the same reason as the overall totals above.
       } else {
         m[key][e.type] += Number(e.usd);
       }
