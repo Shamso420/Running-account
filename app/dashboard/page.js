@@ -32,6 +32,36 @@ function saleProfitUsd(e) {
   return Number(e.usd) - Number(e.cost_usd || 0);
 }
 
+function computeSaleStats(saleEntries, payments) {
+  const transactions = saleEntries.length;
+  const revenue = saleEntries.reduce((s, e) => s + Number(e.usd), 0);
+  const cost = saleEntries.reduce((s, e) => s + Number(e.cost_usd || 0), 0);
+  const grossProfit = revenue - cost;
+  const grossMargin = revenue > 0 ? grossProfit / revenue : 0;
+  const avgProfitPerSale = transactions > 0 ? grossProfit / transactions : 0;
+  const collected = payments.reduce((s, p) => s + Number(p.usd), 0);
+  const openReceivables = revenue - collected;
+  const collectionRate = revenue > 0 ? collected / revenue : 0;
+
+  const byCategory = {};
+  saleEntries.forEach((e) => {
+    if (!byCategory[e.category]) byCategory[e.category] = { category: e.category, transactions: 0, revenue: 0, cost: 0, profit: 0, openBalance: 0 };
+    const c = byCategory[e.category];
+    c.transactions += 1;
+    c.revenue += Number(e.usd);
+    c.cost += Number(e.cost_usd || 0);
+    c.profit += saleProfitUsd(e);
+    c.openBalance += Number(e.usd) - Number(e.received_usd || 0);
+  });
+  const categories = Object.values(byCategory)
+    .map((c) => ({ ...c, margin: c.revenue > 0 ? c.profit / c.revenue : 0 }))
+    .sort((a, b) => b.profit - a.profit);
+  const bestCategory = categories.length ? categories[0] : null;
+  const worstCategory = categories.length ? categories[categories.length - 1] : null;
+
+  return { transactions, revenue, cost, grossProfit, grossMargin, avgProfitPerSale, collected, openReceivables, collectionRate, categories, bestCategory, worstCategory };
+}
+
 const PIE_COLORS = ['#B8894C', '#B0463F', '#3F6E52', '#4C7A9E', '#8A6BA8', '#C48A3F', '#6B8F8A', '#9E6B5C'];
 
 const GOAL_PERIODS = [
@@ -138,6 +168,7 @@ export default function Dashboard() {
   const [paying, setPaying] = useState(false);
   const [salePayments, setSalePayments] = useState([]);
   const [dailyDate, setDailyDate] = useState(new Date().toISOString().slice(0, 10));
+  const [monthlyMonth, setMonthlyMonth] = useState(new Date().toISOString().slice(0, 7));
   const entries = useMemo(
     () => (useRoles && role !== 'admin' ? allEntries.filter((e) => !e.private) : allEntries),
     [allEntries, useRoles, role]
@@ -646,36 +677,15 @@ export default function Dashboard() {
 
   const dailyStats = useMemo(() => {
     const daySales = entries.filter((e) => e.type === 'sale' && e.entry_date === dailyDate && e.product);
-    const transactions = daySales.length;
-    const revenue = daySales.reduce((s, e) => s + Number(e.usd), 0);
-    const cost = daySales.reduce((s, e) => s + Number(e.cost_usd || 0), 0);
-    const grossProfit = revenue - cost;
-    const grossMargin = revenue > 0 ? grossProfit / revenue : 0;
-    const avgProfitPerSale = transactions > 0 ? grossProfit / transactions : 0;
-    const collected = salePayments
-      .filter((p) => p.payment_date === dailyDate)
-      .reduce((s, p) => s + Number(p.usd), 0);
-    const openReceivables = revenue - collected;
-    const collectionRate = revenue > 0 ? collected / revenue : 0;
-
-    const byCategory = {};
-    daySales.forEach((e) => {
-      if (!byCategory[e.category]) byCategory[e.category] = { category: e.category, transactions: 0, revenue: 0, cost: 0, profit: 0, openBalance: 0 };
-      const c = byCategory[e.category];
-      c.transactions += 1;
-      c.revenue += Number(e.usd);
-      c.cost += Number(e.cost_usd || 0);
-      c.profit += saleProfitUsd(e);
-      c.openBalance += Number(e.usd) - Number(e.received_usd || 0);
-    });
-    const categories = Object.values(byCategory)
-      .map((c) => ({ ...c, margin: c.revenue > 0 ? c.profit / c.revenue : 0 }))
-      .sort((a, b) => b.profit - a.profit);
-    const bestCategory = categories.length ? categories[0] : null;
-    const worstCategory = categories.length ? categories[categories.length - 1] : null;
-
-    return { transactions, revenue, cost, grossProfit, grossMargin, avgProfitPerSale, collected, openReceivables, collectionRate, categories, bestCategory, worstCategory };
+    const dayPayments = salePayments.filter((p) => p.payment_date === dailyDate);
+    return computeSaleStats(daySales, dayPayments);
   }, [entries, salePayments, dailyDate]);
+
+  const monthlyStats = useMemo(() => {
+    const monthSales = entries.filter((e) => e.type === 'sale' && e.entry_date.slice(0, 7) === monthlyMonth && e.product);
+    const monthPayments = salePayments.filter((p) => p.payment_date.slice(0, 7) === monthlyMonth);
+    return computeSaleStats(monthSales, monthPayments);
+  }, [entries, salePayments, monthlyMonth]);
 
   const goalCards = useMemo(() => {
     return goals.map((g) => {
@@ -775,6 +785,7 @@ export default function Dashboard() {
             { key: 'ledger', label: 'Ledger' },
             { key: 'dashboard', label: 'Dashboard' },
             { key: 'daily', label: 'Daily' },
+            { key: 'monthly', label: 'Monthly' },
             ...(plan === 'business' ? [{ key: 'goals', label: 'Goals' }] : []),
           ].map((t) => (
             <button key={t.key} onClick={() => setTab(t.key)} style={{
@@ -1238,49 +1249,17 @@ export default function Dashboard() {
               Report date
               <input type="date" value={dailyDate} onChange={(e) => setDailyDate(e.target.value)} style={{ marginTop: 6 }} />
             </label>
+            <SaleStatsPanel stats={dailyStats} />
+          </div>
+        )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 32 }}>
-              <KpiCard label="Transactions" value={dailyStats.transactions} color="var(--ink)" />
-              <KpiCard label="Revenue" value={fmtUSD(dailyStats.revenue)} color="var(--green)" />
-              <KpiCard label="Cost" value={fmtUSD(dailyStats.cost)} color="var(--coral)" />
-              <KpiCard label="Gross profit" value={fmtUSD(dailyStats.grossProfit)} color="var(--blue)" bold />
-              <KpiCard label="Gross margin" value={`${(dailyStats.grossMargin * 100).toFixed(1)}%`} color="var(--gold)" />
-              <KpiCard label="Avg profit / sale" value={fmtUSD(dailyStats.avgProfitPerSale)} color="var(--blue)" />
-              <KpiCard label="Amount collected" value={fmtUSD(dailyStats.collected)} color="var(--green)" />
-              <KpiCard label="Open receivables" value={fmtUSD(dailyStats.openReceivables)} color={dailyStats.openReceivables > 0 ? 'var(--coral)' : 'var(--green)'} />
-              <KpiCard label="Collection rate" value={`${(dailyStats.collectionRate * 100).toFixed(1)}%`} color="var(--gold)" />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 32 }}>
-              <KpiCard label="Best category" value={dailyStats.bestCategory ? dailyStats.bestCategory.category : '—'} color="var(--green)" />
-              <KpiCard label="Needs attention" value={dailyStats.worstCategory ? dailyStats.worstCategory.category : '—'} color="var(--coral)" />
-            </div>
-
-            <ChartCard title="By category">
-              {dailyStats.categories.length === 0 ? <NoData /> : (
-                <div style={{ overflow: 'auto' }}>
-                  <table>
-                    <thead>
-                      <tr>
-                        {['Category', 'Transactions', 'Revenue', 'Profit', 'Margin', 'Open balance'].map((h) => <th key={h}>{h}</th>)}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {dailyStats.categories.map((c) => (
-                        <tr key={c.category}>
-                          <td>{c.category}</td>
-                          <td>{c.transactions}</td>
-                          <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(c.revenue)}</td>
-                          <td style={{ fontFamily: "'IBM Plex Mono', monospace", color: c.profit >= 0 ? 'var(--green)' : 'var(--coral)' }}>{fmtUSD(c.profit)}</td>
-                          <td>{(c.margin * 100).toFixed(1)}%</td>
-                          <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(c.openBalance)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </ChartCard>
+        {tab === 'monthly' && (
+          <div>
+            <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, display: 'block', marginBottom: 20, maxWidth: 220 }}>
+              Report month
+              <input type="month" value={monthlyMonth} onChange={(e) => setMonthlyMonth(e.target.value)} style={{ marginTop: 6 }} />
+            </label>
+            <SaleStatsPanel stats={monthlyStats} />
           </div>
         )}
 
@@ -1736,6 +1715,55 @@ export default function Dashboard() {
         </div>
       )}
     </div>
+  );
+}
+
+function SaleStatsPanel({ stats }) {
+  return (
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 32 }}>
+        <KpiCard label="Transactions" value={stats.transactions} color="var(--ink)" />
+        <KpiCard label="Revenue" value={fmtUSD(stats.revenue)} color="var(--green)" />
+        <KpiCard label="Cost" value={fmtUSD(stats.cost)} color="var(--coral)" />
+        <KpiCard label="Gross profit" value={fmtUSD(stats.grossProfit)} color="var(--blue)" bold />
+        <KpiCard label="Gross margin" value={`${(stats.grossMargin * 100).toFixed(1)}%`} color="var(--gold)" />
+        <KpiCard label="Avg profit / sale" value={fmtUSD(stats.avgProfitPerSale)} color="var(--blue)" />
+        <KpiCard label="Amount collected" value={fmtUSD(stats.collected)} color="var(--green)" />
+        <KpiCard label="Open receivables" value={fmtUSD(stats.openReceivables)} color={stats.openReceivables > 0 ? 'var(--coral)' : 'var(--green)'} />
+        <KpiCard label="Collection rate" value={`${(stats.collectionRate * 100).toFixed(1)}%`} color="var(--gold)" />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 32 }}>
+        <KpiCard label="Best category" value={stats.bestCategory ? stats.bestCategory.category : '—'} color="var(--green)" />
+        <KpiCard label="Needs attention" value={stats.worstCategory ? stats.worstCategory.category : '—'} color="var(--coral)" />
+      </div>
+
+      <ChartCard title="By category">
+        {stats.categories.length === 0 ? <NoData /> : (
+          <div style={{ overflow: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  {['Category', 'Transactions', 'Revenue', 'Profit', 'Margin', 'Open balance'].map((h) => <th key={h}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {stats.categories.map((c) => (
+                  <tr key={c.category}>
+                    <td>{c.category}</td>
+                    <td>{c.transactions}</td>
+                    <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(c.revenue)}</td>
+                    <td style={{ fontFamily: "'IBM Plex Mono', monospace", color: c.profit >= 0 ? 'var(--green)' : 'var(--coral)' }}>{fmtUSD(c.profit)}</td>
+                    <td>{(c.margin * 100).toFixed(1)}%</td>
+                    <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(c.openBalance)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </ChartCard>
+    </>
   );
 }
 
