@@ -1330,11 +1330,17 @@ export default function Dashboard() {
         <div className="invoice-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(28,43,57,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, padding: 20 }}>
           <style>{`
             @media print {
+              @page { margin: 10mm; }
+              html, body { height: auto !important; }
               body * { visibility: hidden; }
               .invoice-print, .invoice-print * { visibility: visible; }
-              .invoice-print { position: fixed; inset: 0; margin: 0; box-shadow: none !important; border-radius: 0 !important; }
-              .invoice-overlay { position: static !important; background: none !important; padding: 0 !important; }
+              .invoice-print {
+                position: absolute; inset: 0 auto auto 0; margin: 0; box-shadow: none !important; border-radius: 0 !important;
+                width: 100% !important; max-width: 100% !important; max-height: none !important; overflow: visible !important;
+              }
+              .invoice-overlay { position: static !important; background: none !important; padding: 0 !important; display: block !important; }
               .no-print { display: none !important; }
+              * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
             }
           `}</style>
           <div className="invoice-print" style={{
