@@ -102,6 +102,7 @@ export default function Dashboard() {
 
   const canEdit = !useRoles || role === 'admin';
   const canAdd = !useRoles || role === 'admin' || role === 'entry';
+  const canSettleDebt = !useRoles || role === 'admin' || role === 'entry';
   const [goals, setGoals] = useState([]);
   const [goalForm, setGoalForm] = useState({ label: '', period: 'weekly', metric: 'income_plus_profit', amount: '', currency: 'USD' });
   const [goalSaving, setGoalSaving] = useState(false);
@@ -879,7 +880,7 @@ export default function Dashboard() {
                                           {canAdd && isActiveAsset && (
                                             <button onClick={() => openSell(e)} style={{ background: 'none', border: '1px solid var(--gold)', color: 'var(--gold)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Sell</button>
                                           )}
-                                          {canEdit && isActiveDebt && (
+                                          {canSettleDebt && isActiveDebt && (
                                             <button onClick={() => settleDebt(e.id)} style={{ background: 'none', border: '1px solid #8A6BA8', color: '#8A6BA8', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Settle</button>
                                           )}
                                           {canEdit && (confirmDeleteId === e.id ? (
