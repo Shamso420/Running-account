@@ -871,7 +871,7 @@ export default function Dashboard() {
                                       <td>
                                         <span style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                                           <button onClick={() => setInvoiceEntry(e)} style={{ background: 'none', border: '1px solid var(--blue)', color: 'var(--blue)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Invoice</button>
-                                          {canEdit && isActiveAsset && (
+                                          {canAdd && isActiveAsset && (
                                             <button onClick={() => openSell(e)} style={{ background: 'none', border: '1px solid var(--gold)', color: 'var(--gold)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Sell</button>
                                           )}
                                           {canEdit && isActiveDebt && (
