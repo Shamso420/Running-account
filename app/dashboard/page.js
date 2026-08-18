@@ -24,6 +24,7 @@ const emptyForm = () => ({
   product: '',
   cost: '',
   receivedNow: '',
+  supplier: '',
 });
 
 function saleProfitUsd(e) {
@@ -295,7 +296,7 @@ export default function Dashboard() {
       const { usd: costUsd, lbp: costLbp } = toUsdLbp(costAmt, form.currency);
       const receivedRaw = form.receivedNow.trim() === '' ? amt : parseFloat(form.receivedNow);
       const receivedUsd = Number.isNaN(receivedRaw) ? 0 : toUsdLbp(Math.min(Math.max(receivedRaw, 0), amt), form.currency).usd;
-      costFields = { product: form.product.trim(), cost_raw: costAmt, cost_usd: costUsd, cost_lbp: costLbp, received_usd: receivedUsd };
+      costFields = { product: form.product.trim(), cost_raw: costAmt, cost_usd: costUsd, cost_lbp: costLbp, received_usd: receivedUsd, supplier_text: form.supplier.trim() };
     }
     const { data, error } = await supabase
       .from('entries')
@@ -714,7 +715,7 @@ export default function Dashboard() {
             <form onSubmit={addEntry} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {TYPES.map((t) => (
-                  <button type="button" key={t.key} onClick={() => setForm((f) => ({ ...f, type: t.key, category: '', product: '', cost: '', receivedNow: '' }))} style={{
+                  <button type="button" key={t.key} onClick={() => setForm((f) => ({ ...f, type: t.key, category: '', product: '', cost: '', receivedNow: '', supplier: '' }))} style={{
                     padding: '8px 14px', borderRadius: 20, cursor: 'pointer',
                     border: `1.5px solid ${form.type === t.key ? t.color : 'var(--paper-line)'}`,
                     background: form.type === t.key ? t.color + '1a' : 'transparent',
@@ -773,15 +774,24 @@ export default function Dashboard() {
               </label>
 
               {form.type === 'sale' && (
-                <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
-                  Product / service sold
-                  <input placeholder="e.g. 11GB uShare, iPhone case" value={form.product}
-                    onChange={(e) => setForm((f) => ({ ...f, product: e.target.value }))} style={{ marginTop: 6 }} />
-                </label>
+                <>
+                  <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                    Product / service sold
+                    <input placeholder="e.g. 11GB uShare, iPhone case" value={form.product}
+                      onChange={(e) => setForm((f) => ({ ...f, product: e.target.value }))} style={{ marginTop: 6 }} />
+                  </label>
+                  <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                    Bought from (supplier, optional)
+                    <input placeholder="e.g. Alfa distributor" value={form.supplier}
+                      onChange={(e) => setForm((f) => ({ ...f, supplier: e.target.value }))} style={{ marginTop: 6 }} />
+                  </label>
+                </>
               )}
 
               <div>
-                <div style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, marginBottom: 6 }}>Customer</div>
+                <div style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, marginBottom: 6 }}>
+                  {form.type === 'sale' ? 'Sold to (customer)' : 'Customer'}
+                </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <div style={{
                     flex: 1, padding: '10px 12px', border: '1px solid var(--paper-line)', borderRadius: 4,
@@ -982,6 +992,7 @@ export default function Dashboard() {
                                         {isDirectSale && (
                                           <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 2 }}>
                                             {e.product} · Cost {fmtUSD(e.cost_usd)} · <span style={{ color: saleProfitUsd(e) >= 0 ? 'var(--green)' : 'var(--coral)', fontWeight: 600 }}>{saleProfitUsd(e) >= 0 ? '+' : ''}{fmtUSD(saleProfitUsd(e))}</span> ({Number(e.usd) > 0 ? ((saleProfitUsd(e) / Number(e.usd)) * 100).toFixed(1) : '0.0'}% margin)
+                                            {e.supplier_text && <><br />Bought from {e.supplier_text} · sold to {e.where_text || '—'}</>}
                                             <br />
                                             <span style={{ color: saleStatusColor, fontWeight: 600 }}>{saleStatus}</span>
                                             {saleBalanceDue > 0.001 && <> · Balance due {fmtUSD(saleBalanceDue)}</>}
@@ -1362,7 +1373,9 @@ export default function Dashboard() {
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 800, color: '#12202b' }}>Bought from:</div>
                   <div style={{ fontSize: 13, color: '#12202b', marginTop: 2 }}>
-                    {(BOUGHT_FROM_TYPES.includes(invoiceEntry.type) || (invoiceEntry.type === 'debt' && invoiceEntry.debt_direction === 'i_owe')) ? (invoiceEntry.where_text || '—') : ''}
+                    {invoiceEntry.type === 'sale'
+                      ? (invoiceEntry.supplier_text || '—')
+                      : (BOUGHT_FROM_TYPES.includes(invoiceEntry.type) || (invoiceEntry.type === 'debt' && invoiceEntry.debt_direction === 'i_owe')) ? (invoiceEntry.where_text || '—') : ''}
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
