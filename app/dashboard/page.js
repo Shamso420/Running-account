@@ -8,7 +8,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import { supabase } from '../../lib/supabaseClient';
-import { RATE, TYPES, CATEGORY_SUGGESTIONS, CUSTOMER_TYPES, PAYMENT_METHODS, saleCollectionStatus, fmtUSD, fmtLBP, toUsdLbp } from '../../lib/ledgerUtils';
+import { RATE, TYPES, CATEGORY_SUGGESTIONS, CUSTOMER_TYPES, PAYMENT_METHODS, saleCollectionStatus, debtCollectionStatus, fmtUSD, fmtLBP, toUsdLbp } from '../../lib/ledgerUtils';
 
 const emptyForm = () => ({
   date: new Date().toISOString().slice(0, 10),
@@ -149,6 +149,7 @@ export default function Dashboard() {
   const canEdit = !useRoles || role === 'admin';
   const canAdd = !useRoles || role === 'admin' || role === 'entry';
   const canSettleDebt = !useRoles || role === 'admin' || role === 'entry';
+  const canDeleteEntry = !useRoles || role === 'admin' || role === 'entry';
   const [goals, setGoals] = useState([]);
   const [goalForm, setGoalForm] = useState({ label: '', period: 'weekly', metric: 'income_plus_profit', amount: '', currency: 'USD' });
   const [goalSaving, setGoalSaving] = useState(false);
@@ -162,6 +163,12 @@ export default function Dashboard() {
   const [newCustomerType, setNewCustomerType] = useState('customer');
   const [customerError, setCustomerError] = useState('');
   const [creatingCustomer, setCreatingCustomer] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState(null);
+  const [editCustomerName, setEditCustomerName] = useState('');
+  const [editCustomerPhone, setEditCustomerPhone] = useState('');
+  const [editCustomerType, setEditCustomerType] = useState('customer');
+  const [editCustomerError, setEditCustomerError] = useState('');
+  const [savingCustomerEdit, setSavingCustomerEdit] = useState(false);
   const [payingEntry, setPayingEntry] = useState(null);
   const [payForm, setPayForm] = useState({ amount: '', currency: 'USD', method: 'Cash' });
   const [payError, setPayError] = useState('');
@@ -320,6 +327,42 @@ export default function Dashboard() {
     selectCustomer(data);
   };
 
+  const openEditCustomer = (c) => {
+    setEditingCustomer(c);
+    setEditCustomerName(c.name);
+    setEditCustomerPhone(c.phone || '');
+    setEditCustomerType(c.type || 'customer');
+    setEditCustomerError('');
+  };
+
+  const cancelEditCustomer = () => {
+    setEditingCustomer(null);
+    setEditCustomerError('');
+  };
+
+  const saveEditCustomer = async () => {
+    if (!editCustomerName.trim()) { setEditCustomerError('Enter a name.'); return; }
+    setSavingCustomerEdit(true);
+    setEditCustomerError('');
+    const { data, error } = await supabase
+      .from('customers')
+      .update({
+        name: editCustomerName.trim(),
+        phone: editCustomerPhone.trim() || null,
+        type: editCustomerType,
+      })
+      .eq('id', editingCustomer.id)
+      .select()
+      .single();
+    setSavingCustomerEdit(false);
+    if (error) { setEditCustomerError('Could not save: ' + error.message); return; }
+    setCustomers((prev) => prev.map((c) => (c.id === data.id ? data : c)).sort((a, b) => a.code.localeCompare(b.code)));
+    if (form.customerId === data.id) {
+      setForm((f) => ({ ...f, where: `${data.name} (${data.code})` }));
+    }
+    setEditingCustomer(null);
+  };
+
   const addEntry = async (e) => {
     e.preventDefault();
     const amt = parseFloat(form.amount);
@@ -460,14 +503,14 @@ export default function Dashboard() {
     setSellingEntry(null);
   };
 
-  const settleDebt = async (id) => {
+  const settleDebt = async (entry) => {
     const { data, error } = await supabase
       .from('entries')
-      .update({ status: 'settled' })
-      .eq('id', id)
+      .update({ status: 'settled', received_usd: entry.usd })
+      .eq('id', entry.id)
       .select()
       .single();
-    if (!error) setAllEntries((prev) => prev.map((e) => (e.id === id ? data : e)));
+    if (!error) setAllEntries((prev) => prev.map((e) => (e.id === entry.id ? data : e)));
   };
 
   const openRecordPayment = (entry) => {
@@ -483,9 +526,13 @@ export default function Dashboard() {
     setPayError('');
     const { usd: paidUsd, lbp: paidLbp } = toUsdLbp(amt, payForm.currency);
     const newReceivedUsd = Math.min(Number(payingEntry.received_usd || 0) + paidUsd, Number(payingEntry.usd));
+    const updateFields = { received_usd: newReceivedUsd };
+    if (payingEntry.type === 'debt' && newReceivedUsd >= Number(payingEntry.usd) - 0.001) {
+      updateFields.status = 'settled';
+    }
     const { data, error } = await supabase
       .from('entries')
-      .update({ received_usd: newReceivedUsd })
+      .update(updateFields)
       .eq('id', payingEntry.id)
       .select()
       .single();
@@ -579,8 +626,9 @@ export default function Dashboard() {
     entries.forEach((e) => {
       if (e.type === 'debt') {
         if (e.status === 'settled') return;
-        if (e.debt_direction === 'i_owe') debtIOwe += Number(e.usd);
-        else debtOwedToMe += Number(e.usd);
+        const balance = Number(e.usd) - Number(e.received_usd || 0);
+        if (e.debt_direction === 'i_owe') debtIOwe += balance;
+        else debtOwedToMe += balance;
       } else if (e.type === 'investment' && e.status === 'sold') {
         // Cost already recovered (plus/minus profit) via the linked Sale entry — don't double count.
       } else if (e.type === 'sale') {
@@ -653,8 +701,9 @@ export default function Dashboard() {
       m[key].entries.push(e);
       if (e.type === 'debt') {
         if (e.status !== 'settled') {
-          if (e.debt_direction === 'i_owe') m[key].debtIOwe += Number(e.usd);
-          else m[key].debtOwedToMe += Number(e.usd);
+          const balance = Number(e.usd) - Number(e.received_usd || 0);
+          if (e.debt_direction === 'i_owe') m[key].debtIOwe += balance;
+          else m[key].debtOwedToMe += balance;
         }
       } else if (e.type === 'investment' && e.status === 'sold') {
         // Excluded from month totals for the same reason as the overall totals above.
@@ -1075,12 +1124,14 @@ export default function Dashboard() {
                                   const isActiveAsset = e.type === 'investment' && e.status === 'active';
                                   const isSoldAsset = e.type === 'investment' && e.status === 'sold';
                                   const isActiveDebt = e.type === 'debt' && e.status !== 'settled';
-                                  const isSettledDebt = e.type === 'debt' && e.status === 'settled';
                                   const assetProfit = isSoldAsset ? Number(e.sold_usd) - Number(e.usd) : null;
                                   const isDirectSale = e.type === 'sale' && !!e.product;
                                   const saleBalanceDue = isDirectSale ? Number(e.usd) - Number(e.received_usd || 0) : 0;
                                   const saleStatus = isDirectSale ? saleCollectionStatus(e) : null;
                                   const saleStatusColor = saleStatus === 'Paid' ? 'var(--green)' : saleStatus === 'Partial' ? 'var(--gold)' : 'var(--coral)';
+                                  const debtBalanceDue = e.type === 'debt' ? Number(e.usd) - Number(e.received_usd || 0) : 0;
+                                  const debtStatus = e.type === 'debt' ? debtCollectionStatus(e) : null;
+                                  const debtStatusColor = debtStatus === 'Settled' ? 'var(--green)' : debtStatus === 'Partial' ? 'var(--gold)' : 'var(--coral)';
                                   return (
                                     <tr key={e.id}>
                                       <td>{e.entry_date}</td>
@@ -1099,7 +1150,9 @@ export default function Dashboard() {
                                         )}
                                         {e.type === 'debt' && (
                                           <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 2 }}>
-                                            {e.debt_direction === 'i_owe' ? 'I owe' : 'Owed to me'}{isSettledDebt ? ' · Settled' : ''}
+                                            {e.debt_direction === 'i_owe' ? 'I owe' : 'Owed to me'} ·{' '}
+                                            <span style={{ color: debtStatusColor, fontWeight: 600 }}>{debtStatus}</span>
+                                            {debtBalanceDue > 0.001 && <> · Balance due {fmtUSD(debtBalanceDue)}</>}
                                           </div>
                                         )}
                                         {isDirectSale && (
@@ -1123,12 +1176,12 @@ export default function Dashboard() {
                                             <button onClick={() => openSell(e)} style={{ background: 'none', border: '1px solid var(--gold)', color: 'var(--gold)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Sell</button>
                                           )}
                                           {canSettleDebt && isActiveDebt && (
-                                            <button onClick={() => settleDebt(e.id)} style={{ background: 'none', border: '1px solid #8A6BA8', color: '#8A6BA8', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Settle</button>
+                                            <button onClick={() => settleDebt(e)} style={{ background: 'none', border: '1px solid #8A6BA8', color: '#8A6BA8', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Settle</button>
                                           )}
-                                          {canSettleDebt && isDirectSale && saleBalanceDue > 0.001 && (
+                                          {canSettleDebt && ((isDirectSale && saleBalanceDue > 0.001) || (isActiveDebt && debtBalanceDue > 0.001)) && (
                                             <button onClick={() => openRecordPayment(e)} style={{ background: 'none', border: '1px solid var(--blue)', color: 'var(--blue)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Record payment</button>
                                           )}
-                                          {canEdit && (confirmDeleteId === e.id ? (
+                                          {canDeleteEntry && (confirmDeleteId === e.id ? (
                                             <span style={{ display: 'flex', gap: 6 }}>
                                               <button onClick={() => deleteEntry(e.id)} style={{ background: 'var(--coral)', color: '#fff', border: 'none', borderRadius: 3, padding: '3px 8px', fontSize: 11 }}>Delete</button>
                                               <button onClick={() => setConfirmDeleteId(null)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
@@ -1426,7 +1479,7 @@ export default function Dashboard() {
       {payingEntry && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,43,57,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 50 }}>
           <div style={{ background: 'var(--card)', width: '100%', maxWidth: 480, borderRadius: '8px 8px 0 0', padding: '22px 22px 28px', boxShadow: '0 -8px 30px rgba(0,0,0,0.2)' }}>
-            <h3 style={{ fontSize: 17, marginBottom: 4 }}>Record payment — {payingEntry.product}</h3>
+            <h3 style={{ fontSize: 17, marginBottom: 4 }}>Record payment — {payingEntry.product || payingEntry.category}</h3>
             <p style={{ color: 'var(--slate)', fontSize: 13, marginTop: 0, marginBottom: 18 }}>
               Balance due: {fmtUSD(Number(payingEntry.usd) - Number(payingEntry.received_usd || 0))}
             </p>
@@ -1644,26 +1697,32 @@ export default function Dashboard() {
                   return c.name.toLowerCase().includes(q) || c.code.includes(q);
                 })
                 .map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => selectCustomer(c)}
-                    style={{
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%',
-                      padding: '10px 12px', background: 'transparent', border: 'none', borderBottom: '1px solid var(--paper-line)',
-                      textAlign: 'left', cursor: 'pointer',
-                    }}
-                  >
-                    <span style={{ fontSize: 14, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {c.name}
-                      {c.type && (
-                        <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--slate)', border: '1px solid var(--paper-line)', borderRadius: 3, padding: '1px 5px' }}>
-                          {CUSTOMER_TYPES.find((t) => t.key === c.type)?.label || c.type}
-                        </span>
-                      )}
-                    </span>
-                    <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: 'var(--gold)' }}>{c.code}</span>
-                  </button>
+                  <div key={c.id} style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--paper-line)' }}>
+                    <button
+                      type="button"
+                      onClick={() => selectCustomer(c)}
+                      style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center', flex: 1,
+                        padding: '10px 12px', background: 'transparent', border: 'none',
+                        textAlign: 'left', cursor: 'pointer',
+                      }}
+                    >
+                      <span style={{ fontSize: 14, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {c.name}
+                        {c.type && (
+                          <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--slate)', border: '1px solid var(--paper-line)', borderRadius: 3, padding: '1px 5px' }}>
+                            {CUSTOMER_TYPES.find((t) => t.key === c.type)?.label || c.type}
+                          </span>
+                        )}
+                      </span>
+                      <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: 'var(--gold)' }}>{c.code}</span>
+                    </button>
+                    {canAdd && (
+                      <button type="button" onClick={() => openEditCustomer(c)} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 12, padding: '10px 12px', cursor: 'pointer' }}>
+                        Edit
+                      </button>
+                    )}
+                  </div>
                 ))}
               {customers.length > 0 && customers.filter((c) => {
                 const q = customerSearch.trim().toLowerCase();
@@ -1677,36 +1736,73 @@ export default function Dashboard() {
               )}
             </div>
 
-            <div style={{ borderTop: '1px solid var(--paper-line)', paddingTop: 16 }}>
-              <h4 style={{ fontSize: 14, marginBottom: 12 }}>+ New customer</h4>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <input placeholder="Name" value={newCustomerName} onChange={(e) => setNewCustomerName(e.target.value)} />
-                <input placeholder="Phone number" value={newCustomerPhone} onChange={(e) => setNewCustomerPhone(e.target.value)} />
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {CUSTOMER_TYPES.map((t) => (
-                    <button type="button" key={t.key} onClick={() => setNewCustomerType(t.key)} style={{
-                      flex: 1, padding: '8px 10px', borderRadius: 4, cursor: 'pointer',
-                      border: `1.5px solid ${newCustomerType === t.key ? 'var(--ink)' : 'var(--paper-line)'}`,
-                      background: newCustomerType === t.key ? 'var(--ink)' : 'transparent',
-                      color: newCustomerType === t.key ? 'var(--paper)' : 'var(--slate)', fontWeight: 600, fontSize: 12,
+            {editingCustomer ? (
+              <div style={{ borderTop: '1px solid var(--paper-line)', paddingTop: 16 }}>
+                <h4 style={{ fontSize: 14, marginBottom: 12 }}>Edit customer — {editingCustomer.code}</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <input placeholder="Name" value={editCustomerName} onChange={(e) => setEditCustomerName(e.target.value)} />
+                  <input placeholder="Phone number" value={editCustomerPhone} onChange={(e) => setEditCustomerPhone(e.target.value)} />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {CUSTOMER_TYPES.map((t) => (
+                      <button type="button" key={t.key} onClick={() => setEditCustomerType(t.key)} style={{
+                        flex: 1, padding: '8px 10px', borderRadius: 4, cursor: 'pointer',
+                        border: `1.5px solid ${editCustomerType === t.key ? 'var(--ink)' : 'var(--paper-line)'}`,
+                        background: editCustomerType === t.key ? 'var(--ink)' : 'transparent',
+                        color: editCustomerType === t.key ? 'var(--paper)' : 'var(--slate)', fontWeight: 600, fontSize: 12,
+                      }}>
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                  {editCustomerError && <div style={{ color: 'var(--coral)', fontSize: 13 }}>{editCustomerError}</div>}
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button type="button" onClick={cancelEditCustomer} style={{
+                      flex: 1, padding: '11px 16px', border: '1px solid var(--paper-line)', borderRadius: 4,
+                      background: 'transparent', color: 'var(--slate)', fontWeight: 600,
                     }}>
-                      {t.label}
+                      Cancel
                     </button>
-                  ))}
+                    <button type="button" onClick={saveEditCustomer} disabled={savingCustomerEdit} style={{
+                      flex: 1, padding: '11px 16px', border: 'none', borderRadius: 4,
+                      background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600, opacity: savingCustomerEdit ? 0.6 : 1,
+                    }}>
+                      {savingCustomerEdit ? 'Saving…' : 'Save changes'}
+                    </button>
+                  </div>
                 </div>
-                {customerError && <div style={{ color: 'var(--coral)', fontSize: 13 }}>{customerError}</div>}
-                <button type="button" onClick={createCustomer} disabled={creatingCustomer} style={{
-                  padding: '11px 16px', border: 'none', borderRadius: 4,
-                  background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600, opacity: creatingCustomer ? 0.6 : 1,
-                }}>
-                  {creatingCustomer ? 'Creating…' : 'Create customer'}
-                </button>
               </div>
-            </div>
+            ) : (
+              <div style={{ borderTop: '1px solid var(--paper-line)', paddingTop: 16 }}>
+                <h4 style={{ fontSize: 14, marginBottom: 12 }}>+ New customer</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <input placeholder="Name" value={newCustomerName} onChange={(e) => setNewCustomerName(e.target.value)} />
+                  <input placeholder="Phone number" value={newCustomerPhone} onChange={(e) => setNewCustomerPhone(e.target.value)} />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {CUSTOMER_TYPES.map((t) => (
+                      <button type="button" key={t.key} onClick={() => setNewCustomerType(t.key)} style={{
+                        flex: 1, padding: '8px 10px', borderRadius: 4, cursor: 'pointer',
+                        border: `1.5px solid ${newCustomerType === t.key ? 'var(--ink)' : 'var(--paper-line)'}`,
+                        background: newCustomerType === t.key ? 'var(--ink)' : 'transparent',
+                        color: newCustomerType === t.key ? 'var(--paper)' : 'var(--slate)', fontWeight: 600, fontSize: 12,
+                      }}>
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                  {customerError && <div style={{ color: 'var(--coral)', fontSize: 13 }}>{customerError}</div>}
+                  <button type="button" onClick={createCustomer} disabled={creatingCustomer} style={{
+                    padding: '11px 16px', border: 'none', borderRadius: 4,
+                    background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600, opacity: creatingCustomer ? 0.6 : 1,
+                  }}>
+                    {creatingCustomer ? 'Creating…' : 'Create customer'}
+                  </button>
+                </div>
+              </div>
+            )}
 
             <button
               type="button"
-              onClick={() => { setCustomerModalOpen(false); setCustomerSearch(''); setCustomerError(''); }}
+              onClick={() => { setCustomerModalOpen(false); setCustomerSearch(''); setCustomerError(''); setEditingCustomer(null); }}
               style={{ width: '100%', marginTop: 16, padding: '11px 16px', border: '1px solid var(--paper-line)', borderRadius: 4, background: 'transparent', color: 'var(--slate)', fontWeight: 600 }}
             >
               Close
