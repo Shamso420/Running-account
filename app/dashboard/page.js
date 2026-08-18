@@ -8,7 +8,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import { supabase } from '../../lib/supabaseClient';
-import { RATE, TYPES, CATEGORY_SUGGESTIONS, fmtUSD, fmtLBP, toUsdLbp } from '../../lib/ledgerUtils';
+import { RATE, TYPES, CATEGORY_SUGGESTIONS, CUSTOMER_TYPES, saleCollectionStatus, fmtUSD, fmtLBP, toUsdLbp } from '../../lib/ledgerUtils';
 
 const emptyForm = () => ({
   date: new Date().toISOString().slice(0, 10),
@@ -21,7 +21,14 @@ const emptyForm = () => ({
   notes: '',
   debtDirection: 'owed_to_me',
   private: false,
+  product: '',
+  cost: '',
+  receivedNow: '',
 });
+
+function saleProfitUsd(e) {
+  return Number(e.usd) - Number(e.cost_usd || 0);
+}
 
 const PIE_COLORS = ['#B8894C', '#B0463F', '#3F6E52', '#4C7A9E', '#8A6BA8', '#C48A3F', '#6B8F8A', '#9E6B5C'];
 
@@ -69,10 +76,17 @@ function computeAchieved(goal, entries) {
   const { start, end } = periodRange(goal.period);
   const relevant = entries.filter((e) => e.entry_date >= start && e.entry_date <= end);
   if (goal.metric === 'income') return relevant.filter((e) => e.type === 'income').reduce((s, e) => s + Number(e.usd), 0);
-  if (goal.metric === 'profit') return relevant.filter((e) => e.type === 'profit').reduce((s, e) => s + Number(e.usd), 0);
-  if (goal.metric === 'income_plus_profit') return relevant.filter((e) => e.type === 'income' || e.type === 'profit').reduce((s, e) => s + Number(e.usd), 0);
+  if (goal.metric === 'profit') return relevant.filter((e) => e.type === 'sale').reduce((s, e) => s + saleProfitUsd(e), 0);
+  if (goal.metric === 'income_plus_profit') {
+    return relevant.reduce((s, e) => {
+      if (e.type === 'income') return s + Number(e.usd);
+      if (e.type === 'sale') return s + saleProfitUsd(e);
+      return s;
+    }, 0);
+  }
   return relevant.reduce((s, e) => {
-    if (e.type === 'income' || e.type === 'profit') return s + Number(e.usd);
+    if (e.type === 'income') return s + Number(e.usd);
+    if (e.type === 'sale') return s + saleProfitUsd(e);
     if (e.type === 'expense' || e.type === 'investment') return s - Number(e.usd);
     return s;
   }, 0);
@@ -113,8 +127,13 @@ export default function Dashboard() {
   const [customerSearch, setCustomerSearch] = useState('');
   const [newCustomerName, setNewCustomerName] = useState('');
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
+  const [newCustomerType, setNewCustomerType] = useState('customer');
   const [customerError, setCustomerError] = useState('');
   const [creatingCustomer, setCreatingCustomer] = useState(false);
+  const [payingEntry, setPayingEntry] = useState(null);
+  const [payForm, setPayForm] = useState({ amount: '', currency: 'USD' });
+  const [payError, setPayError] = useState('');
+  const [paying, setPaying] = useState(false);
   const entries = useMemo(
     () => (useRoles && role !== 'admin' ? allEntries.filter((e) => !e.private) : allEntries),
     [allEntries, useRoles, role]
@@ -247,6 +266,7 @@ export default function Dashboard() {
         code: nextCode,
         name: newCustomerName.trim(),
         phone: newCustomerPhone.trim() || null,
+        type: newCustomerType,
       })
       .select()
       .single();
@@ -255,6 +275,7 @@ export default function Dashboard() {
     setCustomers((prev) => [...prev, data].sort((a, b) => a.code.localeCompare(b.code)));
     setNewCustomerName('');
     setNewCustomerPhone('');
+    setNewCustomerType('customer');
     selectCustomer(data);
   };
 
@@ -263,9 +284,19 @@ export default function Dashboard() {
     const amt = parseFloat(form.amount);
     if (!amt || amt <= 0) { setFormError('Enter an amount greater than zero.'); return; }
     if (!form.category.trim()) { setFormError('Enter a category.'); return; }
+    if (form.type === 'sale' && !form.product.trim()) { setFormError('Enter the product or service sold.'); return; }
+    const costAmt = form.type === 'sale' ? parseFloat(form.cost) : null;
+    if (form.type === 'sale' && (Number.isNaN(costAmt) || costAmt < 0)) { setFormError('Enter a cost (0 or more).'); return; }
     setFormError('');
     setSaving(true);
     const { usd, lbp } = toUsdLbp(amt, form.currency);
+    let costFields = {};
+    if (form.type === 'sale') {
+      const { usd: costUsd, lbp: costLbp } = toUsdLbp(costAmt, form.currency);
+      const receivedRaw = form.receivedNow.trim() === '' ? amt : parseFloat(form.receivedNow);
+      const receivedUsd = Number.isNaN(receivedRaw) ? 0 : toUsdLbp(Math.min(Math.max(receivedRaw, 0), amt), form.currency).usd;
+      costFields = { product: form.product.trim(), cost_raw: costAmt, cost_usd: costUsd, cost_lbp: costLbp, received_usd: receivedUsd };
+    }
     const { data, error } = await supabase
       .from('entries')
       .insert({
@@ -281,6 +312,7 @@ export default function Dashboard() {
         debt_direction: form.type === 'debt' ? form.debtDirection : null,
         customer_id: form.customerId || null,
         private: useRoles && role === 'admin' ? !!form.private : false,
+        ...costFields,
       })
       .select()
       .single();
@@ -310,7 +342,7 @@ export default function Dashboard() {
       .insert({
         user_id: session.user.id,
         entry_date: sellForm.date,
-        type: 'profit',
+        type: 'sale',
         category: sellingEntry.category,
         where_text: sellingEntry.where_text,
         notes: `${profitUsd >= 0 ? 'Profit' : 'Loss'} from sale of ${sellingEntry.category}`,
@@ -318,6 +350,7 @@ export default function Dashboard() {
         amount_raw: Math.max(Math.abs(profitUsd), 0.01),
         usd: profitUsd,
         lbp: profitLbp,
+        received_usd: profitUsd,
       })
       .select()
       .single();
@@ -359,6 +392,31 @@ export default function Dashboard() {
     if (!error) setAllEntries((prev) => prev.map((e) => (e.id === id ? data : e)));
   };
 
+  const openRecordPayment = (entry) => {
+    setPayingEntry(entry);
+    setPayForm({ amount: '', currency: entry.currency || 'USD' });
+    setPayError('');
+  };
+
+  const confirmRecordPayment = async () => {
+    const amt = parseFloat(payForm.amount);
+    if (!amt || amt <= 0) { setPayError('Enter an amount greater than zero.'); return; }
+    setPaying(true);
+    setPayError('');
+    const { usd: paidUsd } = toUsdLbp(amt, payForm.currency);
+    const newReceivedUsd = Math.min(Number(payingEntry.received_usd || 0) + paidUsd, Number(payingEntry.usd));
+    const { data, error } = await supabase
+      .from('entries')
+      .update({ received_usd: newReceivedUsd })
+      .eq('id', payingEntry.id)
+      .select()
+      .single();
+    setPaying(false);
+    if (error) { setPayError('Could not save: ' + error.message); return; }
+    setAllEntries((prev) => prev.map((e) => (e.id === data.id ? data : e)));
+    setPayingEntry(null);
+  };
+
   const addGoal = async (e) => {
     e.preventDefault();
     const amt = parseFloat(goalForm.amount);
@@ -396,14 +454,17 @@ export default function Dashboard() {
   };
 
   const exportCSV = () => {
-    const headers = ['date', 'type', 'category', 'where', 'amount', 'currency', 'lbp', 'usd', 'notes'];
+    const headers = ['date', 'type', 'category', 'product', 'where', 'amount', 'currency', 'lbp', 'usd', 'cost_usd', 'received_usd', 'notes'];
     const escape = (v) => {
       const s = String(v ?? '');
       return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
     };
     const rows = entries.map((e) => [
-      e.entry_date, e.type, e.category, e.where_text, e.amount_raw, e.currency,
-      Math.round(e.lbp), Number(e.usd).toFixed(2), e.notes,
+      e.entry_date, e.type, e.category, e.product || '', e.where_text, e.amount_raw, e.currency,
+      Math.round(e.lbp), Number(e.usd).toFixed(2),
+      e.type === 'sale' ? Number(e.cost_usd || 0).toFixed(2) : '',
+      e.type === 'sale' ? Number(e.received_usd || 0).toFixed(2) : '',
+      e.notes,
     ].map(escape).join(','));
     const csv = [headers.join(','), ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -418,7 +479,7 @@ export default function Dashboard() {
   };
 
   const totals = useMemo(() => {
-    const t = { income: 0, expense: 0, investment: 0, profit: 0 };
+    const t = { income: 0, expense: 0, investment: 0, sale: 0 };
     let debtOwedToMe = 0;
     let debtIOwe = 0;
     entries.forEach((e) => {
@@ -427,7 +488,9 @@ export default function Dashboard() {
         if (e.debt_direction === 'i_owe') debtIOwe += Number(e.usd);
         else debtOwedToMe += Number(e.usd);
       } else if (e.type === 'investment' && e.status === 'sold') {
-        // Cost already recovered (plus/minus profit) via the linked Sale profit entry — don't double count.
+        // Cost already recovered (plus/minus profit) via the linked Sale entry — don't double count.
+      } else if (e.type === 'sale') {
+        t.sale += saleProfitUsd(e);
       } else {
         t[e.type] += Number(e.usd);
       }
@@ -438,7 +501,7 @@ export default function Dashboard() {
       debtOwedToMe,
       debtIOwe,
       netDebt,
-      net: t.income + t.profit - t.expense - t.investment + netDebt,
+      net: t.income + t.sale - t.expense - t.investment + netDebt,
     };
   }, [entries]);
 
@@ -460,8 +523,9 @@ export default function Dashboard() {
       if (e.type === 'debt') return;
       if (e.type === 'investment' && e.status === 'sold') return;
       const key = e.entry_date.slice(0, 7);
-      if (!m[key]) m[key] = { month: key, income: 0, expense: 0, investment: 0, profit: 0 };
-      m[key][e.type] += Number(e.usd);
+      if (!m[key]) m[key] = { month: key, income: 0, expense: 0, investment: 0, sale: 0 };
+      if (e.type === 'sale') m[key].sale += saleProfitUsd(e);
+      else m[key][e.type] += Number(e.usd);
     });
     return Object.values(m).sort((a, b) => a.month.localeCompare(b.month));
   }, [entries]);
@@ -469,7 +533,7 @@ export default function Dashboard() {
   const trend = useMemo(() => {
     let running = 0;
     return monthly.map((m) => {
-      const net = m.income + m.profit - m.expense - m.investment;
+      const net = m.income + m.sale - m.expense - m.investment;
       running += net;
       return { month: m.month, income: m.income, expense: m.expense, net: running };
     });
@@ -491,7 +555,7 @@ export default function Dashboard() {
     const m = {};
     visibleEntries.forEach((e) => {
       const key = e.entry_date.slice(0, 7);
-      if (!m[key]) m[key] = { month: key, entries: [], income: 0, expense: 0, investment: 0, profit: 0, debtOwedToMe: 0, debtIOwe: 0 };
+      if (!m[key]) m[key] = { month: key, entries: [], income: 0, expense: 0, investment: 0, sale: 0, debtOwedToMe: 0, debtIOwe: 0 };
       m[key].entries.push(e);
       if (e.type === 'debt') {
         if (e.status !== 'settled') {
@@ -500,12 +564,14 @@ export default function Dashboard() {
         }
       } else if (e.type === 'investment' && e.status === 'sold') {
         // Excluded from month totals for the same reason as the overall totals above.
+      } else if (e.type === 'sale') {
+        m[key].sale += saleProfitUsd(e);
       } else {
         m[key][e.type] += Number(e.usd);
       }
     });
     return Object.values(m)
-      .map((g) => ({ ...g, net: g.income + g.profit - g.expense - g.investment + g.debtOwedToMe - g.debtIOwe }))
+      .map((g) => ({ ...g, net: g.income + g.sale - g.expense - g.investment + g.debtOwedToMe - g.debtIOwe }))
       .sort((a, b) => b.month.localeCompare(a.month));
   }, [visibleEntries]);
 
@@ -643,12 +709,12 @@ export default function Dashboard() {
         {tab === 'add' && (
           <div style={{ maxWidth: 560 }}>
             <p style={{ color: 'var(--slate)', fontSize: 14, marginTop: 0, marginBottom: 24 }}>
-              Log what moved today — income, a purchase, an investment, a sale profit, or debt.
+              Log what moved today — income, a purchase, an investment, a sale, or debt.
             </p>
             <form onSubmit={addEntry} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {TYPES.map((t) => (
-                  <button type="button" key={t.key} onClick={() => setForm((f) => ({ ...f, type: t.key, category: '' }))} style={{
+                  <button type="button" key={t.key} onClick={() => setForm((f) => ({ ...f, type: t.key, category: '', product: '', cost: '', receivedNow: '' }))} style={{
                     padding: '8px 14px', borderRadius: 20, cursor: 'pointer',
                     border: `1.5px solid ${form.type === t.key ? t.color : 'var(--paper-line)'}`,
                     background: form.type === t.key ? t.color + '1a' : 'transparent',
@@ -705,6 +771,15 @@ export default function Dashboard() {
                   {CATEGORY_SUGGESTIONS[form.type].map((c) => <option key={c} value={c} />)}
                 </datalist>
               </label>
+
+              {form.type === 'sale' && (
+                <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                  Product / service sold
+                  <input placeholder="e.g. 11GB uShare, iPhone case" value={form.product}
+                    onChange={(e) => setForm((f) => ({ ...f, product: e.target.value }))} style={{ marginTop: 6 }} />
+                </label>
+              )}
+
               <div>
                 <div style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, marginBottom: 6 }}>Customer</div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -729,7 +804,7 @@ export default function Dashboard() {
               </div>
               <div style={{ display: 'flex', gap: 12 }}>
                 <label style={{ flex: 1, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
-                  Amount
+                  {form.type === 'sale' ? 'Selling price' : 'Amount'}
                   <input type="number" step="any" min="0" placeholder="0" value={form.amount}
                     onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} style={{ marginTop: 6 }} />
                 </label>
@@ -741,6 +816,37 @@ export default function Dashboard() {
                   </select>
                 </label>
               </div>
+
+              {form.type === 'sale' && (
+                <>
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <label style={{ flex: 1, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                      Cost to you
+                      <input type="number" step="any" min="0" placeholder="0" value={form.cost}
+                        onChange={(e) => setForm((f) => ({ ...f, cost: e.target.value }))} style={{ marginTop: 6 }} />
+                    </label>
+                    <label style={{ flex: 1, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                      Received now (optional)
+                      <input type="number" step="any" min="0" placeholder="defaults to full amount" value={form.receivedNow}
+                        onChange={(e) => setForm((f) => ({ ...f, receivedNow: e.target.value }))} style={{ marginTop: 6 }} />
+                    </label>
+                  </div>
+                  {form.amount && form.cost !== '' && !Number.isNaN(parseFloat(form.amount)) && !Number.isNaN(parseFloat(form.cost)) && (
+                    (() => {
+                      const price = parseFloat(form.amount);
+                      const cost = parseFloat(form.cost);
+                      const profit = price - cost;
+                      const margin = price > 0 ? (profit / price) * 100 : 0;
+                      return (
+                        <div style={{ fontSize: 13, color: profit >= 0 ? 'var(--green)' : 'var(--coral)', fontWeight: 600 }}>
+                          Profit: {profit.toLocaleString('en-US', { maximumFractionDigits: 2 })} {form.currency} ({margin.toFixed(1)}% margin)
+                        </div>
+                      );
+                    })()
+                  )}
+                </>
+              )}
+
               <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
                 Notes (optional)
                 <input value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} style={{ marginTop: 6 }} />
@@ -812,7 +918,7 @@ export default function Dashboard() {
                           <span style={{ color: 'var(--slate)', fontSize: 12 }}>{g.entries.length} {g.entries.length === 1 ? 'entry' : 'entries'}</span>
                         </span>
                         <span style={{ display: 'flex', alignItems: 'center', gap: 18, fontSize: 13 }}>
-                          <span style={{ color: 'var(--green)' }}>+{fmtUSD(g.income + g.profit)}</span>
+                          <span style={{ color: 'var(--green)' }}>+{fmtUSD(g.income + g.sale)}</span>
                           <span style={{ color: 'var(--coral)' }}>-{fmtUSD(g.expense + g.investment)}</span>
                           <span style={{ fontWeight: 700, color: g.net >= 0 ? 'var(--green)' : 'var(--coral)' }}>{fmtUSD(g.net)}</span>
                           <span style={{ color: 'var(--slate)' }}>{isOpen ? '▲' : '▼'}</span>
@@ -848,6 +954,10 @@ export default function Dashboard() {
                                   const isActiveDebt = e.type === 'debt' && e.status !== 'settled';
                                   const isSettledDebt = e.type === 'debt' && e.status === 'settled';
                                   const assetProfit = isSoldAsset ? Number(e.sold_usd) - Number(e.usd) : null;
+                                  const isDirectSale = e.type === 'sale' && !!e.product;
+                                  const saleBalanceDue = isDirectSale ? Number(e.usd) - Number(e.received_usd || 0) : 0;
+                                  const saleStatus = isDirectSale ? saleCollectionStatus(e) : null;
+                                  const saleStatusColor = saleStatus === 'Paid' ? 'var(--green)' : saleStatus === 'Partial' ? 'var(--gold)' : 'var(--coral)';
                                   return (
                                     <tr key={e.id}>
                                       <td>{e.entry_date}</td>
@@ -869,6 +979,14 @@ export default function Dashboard() {
                                             {e.debt_direction === 'i_owe' ? 'I owe' : 'Owed to me'}{isSettledDebt ? ' · Settled' : ''}
                                           </div>
                                         )}
+                                        {isDirectSale && (
+                                          <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 2 }}>
+                                            {e.product} · Cost {fmtUSD(e.cost_usd)} · <span style={{ color: saleProfitUsd(e) >= 0 ? 'var(--green)' : 'var(--coral)', fontWeight: 600 }}>{saleProfitUsd(e) >= 0 ? '+' : ''}{fmtUSD(saleProfitUsd(e))}</span> ({Number(e.usd) > 0 ? ((saleProfitUsd(e) / Number(e.usd)) * 100).toFixed(1) : '0.0'}% margin)
+                                            <br />
+                                            <span style={{ color: saleStatusColor, fontWeight: 600 }}>{saleStatus}</span>
+                                            {saleBalanceDue > 0.001 && <> · Balance due {fmtUSD(saleBalanceDue)}</>}
+                                          </div>
+                                        )}
                                       </td>
                                       <td>{e.where_text || '—'}</td>
                                       <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtLBP(e.lbp)}</td>
@@ -882,6 +1000,9 @@ export default function Dashboard() {
                                           )}
                                           {canSettleDebt && isActiveDebt && (
                                             <button onClick={() => settleDebt(e.id)} style={{ background: 'none', border: '1px solid #8A6BA8', color: '#8A6BA8', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Settle</button>
+                                          )}
+                                          {canSettleDebt && isDirectSale && saleBalanceDue > 0.001 && (
+                                            <button onClick={() => openRecordPayment(e)} style={{ background: 'none', border: '1px solid var(--blue)', color: 'var(--blue)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Record payment</button>
                                           )}
                                           {canEdit && (confirmDeleteId === e.id ? (
                                             <span style={{ display: 'flex', gap: 6 }}>
@@ -916,7 +1037,7 @@ export default function Dashboard() {
               <KpiCard label="Income" value={fmtUSD(totals.income)} color="var(--green)" />
               <KpiCard label="Expenses" value={fmtUSD(totals.expense)} color="var(--coral)" />
               <KpiCard label="Invested" value={fmtUSD(totals.investment)} color="var(--gold)" />
-              <KpiCard label="Sale profit" value={fmtUSD(totals.profit)} color="var(--blue)" />
+              <KpiCard label="Sale profit" value={fmtUSD(totals.sale)} color="var(--blue)" />
               <KpiCard label="Debt (net)" value={fmtUSD(totals.netDebt)} color={totals.netDebt >= 0 ? 'var(--green)' : 'var(--coral)'} />
               <KpiCard label="Net position" value={fmtUSD(totals.net)} color={totals.net >= 0 ? 'var(--green)' : 'var(--coral)'} bold />
             </div>
@@ -959,7 +1080,7 @@ export default function Dashboard() {
                   <Bar dataKey="income" name="Income" fill="#3F6E52" radius={[3, 3, 0, 0]} />
                   <Bar dataKey="expense" name="Expense" fill="#B0463F" radius={[3, 3, 0, 0]} />
                   <Bar dataKey="investment" name="Investment" fill="#B8894C" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="profit" name="Sale profit" fill="#4C7A9E" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="sale" name="Sale profit" fill="#4C7A9E" radius={[3, 3, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </ChartCard>
@@ -1158,6 +1279,42 @@ export default function Dashboard() {
         </div>
       )}
 
+      {payingEntry && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,43,57,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 50 }}>
+          <div style={{ background: 'var(--card)', width: '100%', maxWidth: 480, borderRadius: '8px 8px 0 0', padding: '22px 22px 28px', boxShadow: '0 -8px 30px rgba(0,0,0,0.2)' }}>
+            <h3 style={{ fontSize: 17, marginBottom: 4 }}>Record payment — {payingEntry.product}</h3>
+            <p style={{ color: 'var(--slate)', fontSize: 13, marginTop: 0, marginBottom: 18 }}>
+              Balance due: {fmtUSD(Number(payingEntry.usd) - Number(payingEntry.received_usd || 0))}
+            </p>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
+              <label style={{ flex: 1, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                Amount received
+                <input type="number" step="any" min="0" placeholder="0" value={payForm.amount}
+                  onChange={(e) => setPayForm((f) => ({ ...f, amount: e.target.value }))} style={{ marginTop: 6 }} autoFocus />
+              </label>
+              <label style={{ width: 110, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                Currency
+                <select value={payForm.currency} onChange={(e) => setPayForm((f) => ({ ...f, currency: e.target.value }))} style={{ marginTop: 6 }}>
+                  <option value="USD">USD</option>
+                  <option value="LBP">LBP</option>
+                </select>
+              </label>
+            </div>
+
+            {payError && <div style={{ color: 'var(--coral)', fontSize: 13, marginBottom: 14 }}>{payError}</div>}
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setPayingEntry(null)} style={{ flex: 1, padding: '11px 16px', border: '1px solid var(--paper-line)', borderRadius: 4, background: 'transparent', color: 'var(--slate)', fontWeight: 600 }}>
+                Cancel
+              </button>
+              <button onClick={confirmRecordPayment} disabled={paying} style={{ flex: 1, padding: '11px 16px', border: 'none', borderRadius: 4, background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600, opacity: paying ? 0.6 : 1 }}>
+                {paying ? 'Saving…' : 'Record payment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {invoiceEntry && (
         <div className="invoice-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(28,43,57,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, padding: 20 }}>
           <style>{`
@@ -1319,7 +1476,14 @@ export default function Dashboard() {
                       textAlign: 'left', cursor: 'pointer',
                     }}
                   >
-                    <span style={{ fontSize: 14, color: 'var(--ink)' }}>{c.name}</span>
+                    <span style={{ fontSize: 14, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {c.name}
+                      {c.type && (
+                        <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--slate)', border: '1px solid var(--paper-line)', borderRadius: 3, padding: '1px 5px' }}>
+                          {CUSTOMER_TYPES.find((t) => t.key === c.type)?.label || c.type}
+                        </span>
+                      )}
+                    </span>
                     <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: 'var(--gold)' }}>{c.code}</span>
                   </button>
                 ))}
@@ -1340,6 +1504,18 @@ export default function Dashboard() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <input placeholder="Name" value={newCustomerName} onChange={(e) => setNewCustomerName(e.target.value)} />
                 <input placeholder="Phone number" value={newCustomerPhone} onChange={(e) => setNewCustomerPhone(e.target.value)} />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {CUSTOMER_TYPES.map((t) => (
+                    <button type="button" key={t.key} onClick={() => setNewCustomerType(t.key)} style={{
+                      flex: 1, padding: '8px 10px', borderRadius: 4, cursor: 'pointer',
+                      border: `1.5px solid ${newCustomerType === t.key ? 'var(--ink)' : 'var(--paper-line)'}`,
+                      background: newCustomerType === t.key ? 'var(--ink)' : 'transparent',
+                      color: newCustomerType === t.key ? 'var(--paper)' : 'var(--slate)', fontWeight: 600, fontSize: 12,
+                    }}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
                 {customerError && <div style={{ color: 'var(--coral)', fontSize: 13 }}>{customerError}</div>}
                 <button type="button" onClick={createCustomer} disabled={creatingCustomer} style={{
                   padding: '11px 16px', border: 'none', borderRadius: 4,
