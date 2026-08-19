@@ -178,6 +178,7 @@ export default function Dashboard() {
   const [increaseError, setIncreaseError] = useState('');
   const [increasing, setIncreasing] = useState(false);
   const [costForm, setCostForm] = useState({ date: new Date().toISOString().slice(0, 10), description: '', amount: '', currency: 'LBP', frequency: 'monthly' });
+  const [wageForm, setWageForm] = useState({ date: new Date().toISOString().slice(0, 10), description: '', amount: '', currency: 'LBP', frequency: 'monthly' });
   const [costError, setCostError] = useState('');
   const [savingCost, setSavingCost] = useState(false);
   const [debtForm, setDebtForm] = useState({ date: new Date().toISOString().slice(0, 10), who: '', direction: 'owed_to_me', category: '', amount: '', currency: 'LBP', notes: '' });
@@ -672,34 +673,34 @@ export default function Dashboard() {
     setIncreasingDebt(null);
   };
 
-  const addRecurringCost = async (section) => {
-    const amt = parseFloat(costForm.amount);
+  const addRecurringCost = async (section, form, setForm) => {
+    const amt = parseFloat(form.amount);
     if (!amt || amt <= 0) { setCostError('Enter an amount greater than zero.'); return; }
-    if (!costForm.description.trim()) { setCostError(section === 'wage' ? 'Enter who this wage is for.' : 'Enter a description.'); return; }
+    if (!form.description.trim()) { setCostError(section === 'wage' ? 'Enter who this wage is for.' : 'Enter a description.'); return; }
     setCostError('');
     setSavingCost(true);
-    const { usd, lbp } = toUsdLbp(amt, costForm.currency);
+    const { usd, lbp } = toUsdLbp(amt, form.currency);
     const { data, error } = await supabase
       .from('entries')
       .insert({
         user_id: session.user.id,
-        entry_date: costForm.date,
+        entry_date: form.date,
         type: 'expense',
-        category: costForm.description.trim(),
+        category: form.description.trim(),
         where_text: '',
         notes: '',
-        currency: costForm.currency,
+        currency: form.currency,
         amount_raw: amt,
         usd, lbp,
         cost_section: section,
-        recurrence: costForm.frequency,
+        recurrence: form.frequency,
       })
       .select()
       .single();
     setSavingCost(false);
     if (error) { setCostError('Could not save: ' + error.message); return; }
     setAllEntries((prev) => [data, ...prev].sort((a, b) => b.entry_date.localeCompare(a.entry_date)));
-    setCostForm((f) => ({ ...f, description: '', amount: '' }));
+    setForm((f) => ({ ...f, description: '', amount: '' }));
   };
 
   const addDebtEntry = async () => {
@@ -1565,17 +1566,17 @@ export default function Dashboard() {
           <RecurringCostSection
             title="360 Cell cost" placeholder="Description" entries={costEntries}
             form={costForm} setForm={setCostForm} error={costError} saving={savingCost}
-            onSubmit={() => addRecurringCost('cost')}
-            canDelete={canDeleteEntry} confirmDeleteId={confirmDeleteId} setConfirmDeleteId={setConfirmDeleteId} onDelete={deleteEntry}
+            onSubmit={() => addRecurringCost('cost', costForm, setCostForm)}
+            canAdd={canAdd} canDelete={canDeleteEntry} confirmDeleteId={confirmDeleteId} setConfirmDeleteId={setConfirmDeleteId} onDelete={deleteEntry}
           />
         )}
 
         {tab === 'wages' && (
           <RecurringCostSection
             title="wage" placeholder="Employee name" entries={wageEntries}
-            form={costForm} setForm={setCostForm} error={costError} saving={savingCost}
-            onSubmit={() => addRecurringCost('wage')}
-            canDelete={canDeleteEntry} confirmDeleteId={confirmDeleteId} setConfirmDeleteId={setConfirmDeleteId} onDelete={deleteEntry}
+            form={wageForm} setForm={setWageForm} error={costError} saving={savingCost}
+            onSubmit={() => addRecurringCost('wage', wageForm, setWageForm)}
+            canAdd={canAdd} canDelete={canDeleteEntry} confirmDeleteId={confirmDeleteId} setConfirmDeleteId={setConfirmDeleteId} onDelete={deleteEntry}
           />
         )}
 
@@ -2307,7 +2308,7 @@ function SaleStatsPanel({ stats }) {
 
 function RecurringCostSection({
   title, placeholder, entries, form, setForm, error, saving, onSubmit,
-  canDelete, confirmDeleteId, setConfirmDeleteId, onDelete,
+  canAdd, canDelete, confirmDeleteId, setConfirmDeleteId, onDelete,
 }) {
   const monthlyTotal = entries.filter((e) => e.recurrence === 'monthly').reduce((s, e) => s + Number(e.usd), 0);
   const weeklyTotal = entries.filter((e) => e.recurrence === 'weekly').reduce((s, e) => s + Number(e.usd), 0);
@@ -2320,6 +2321,7 @@ function RecurringCostSection({
         <KpiCard label="One-time total" value={fmtUSD(onceTotal)} color="var(--coral)" />
       </div>
 
+      {canAdd && (
       <ChartCard title={`+ Add ${title.toLowerCase()}`}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
           <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
@@ -2356,6 +2358,7 @@ function RecurringCostSection({
         </div>
         {error && <div style={{ color: 'var(--coral)', fontSize: 13, marginTop: 10 }}>{error}</div>}
       </ChartCard>
+      )}
 
       <div style={{ marginTop: 24, overflow: 'auto' }}>
         {entries.length === 0 ? <NoData /> : (
