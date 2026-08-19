@@ -580,14 +580,17 @@ export default function Dashboard() {
     const { usd: addedUsd } = toUsdLbp(amt, increaseForm.currency);
     const newUsd = Number(increasingDebt.usd) + addedUsd;
     const newLbp = newUsd * RATE;
+    const updateFields = {
+      usd: newUsd,
+      lbp: newLbp,
+      amount_raw: increasingDebt.currency === 'LBP' ? newLbp : newUsd,
+    };
+    if (increasingDebt.status === 'settled') {
+      updateFields.status = 'active';
+    }
     const { data, error } = await supabase
       .from('entries')
-      .update({
-        usd: newUsd,
-        lbp: newLbp,
-        amount_raw: increasingDebt.currency === 'LBP' ? newLbp : newUsd,
-        status: null,
-      })
+      .update(updateFields)
       .eq('id', increasingDebt.id)
       .select()
       .single();
