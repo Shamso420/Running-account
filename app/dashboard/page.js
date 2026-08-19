@@ -8,7 +8,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import { supabase } from '../../lib/supabaseClient';
-import { RATE, TYPES, CATEGORY_SUGGESTIONS, CUSTOMER_TYPES, PAYMENT_METHODS, saleCollectionStatus, debtCollectionStatus, fmtUSD, fmtLBP, toUsdLbp } from '../../lib/ledgerUtils';
+import { RATE, TYPES, CATEGORY_SUGGESTIONS, CUSTOMER_TYPES, PAYMENT_METHODS, FREQUENCIES, saleCollectionStatus, debtCollectionStatus, fmtUSD, fmtLBP, toUsdLbp } from '../../lib/ledgerUtils';
 
 const emptyForm = () => ({
   date: new Date().toISOString().slice(0, 10),
@@ -173,8 +173,16 @@ export default function Dashboard() {
   const [payForm, setPayForm] = useState({ amount: '', currency: 'USD', method: 'Cash' });
   const [payError, setPayError] = useState('');
   const [paying, setPaying] = useState(false);
+  const [increasingDebt, setIncreasingDebt] = useState(null);
+  const [increaseForm, setIncreaseForm] = useState({ amount: '', currency: 'USD' });
+  const [increaseError, setIncreaseError] = useState('');
+  const [increasing, setIncreasing] = useState(false);
+  const [costForm, setCostForm] = useState({ date: new Date().toISOString().slice(0, 10), description: '', amount: '', currency: 'LBP', frequency: 'monthly' });
+  const [costError, setCostError] = useState('');
+  const [savingCost, setSavingCost] = useState(false);
   const [salePayments, setSalePayments] = useState([]);
-  const [dailyDate, setDailyDate] = useState(new Date().toISOString().slice(0, 10));
+  const [reportStartDate, setReportStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [reportEndDate, setReportEndDate] = useState(new Date().toISOString().slice(0, 10));
   const [monthlyMonth, setMonthlyMonth] = useState(new Date().toISOString().slice(0, 7));
   const entries = useMemo(
     () => (useRoles && role !== 'admin' ? allEntries.filter((e) => !e.private) : allEntries),
@@ -558,6 +566,67 @@ export default function Dashboard() {
     setPayingEntry(null);
   };
 
+  const openIncreaseDebt = (entry) => {
+    setIncreasingDebt(entry);
+    setIncreaseForm({ amount: '', currency: entry.currency || 'USD' });
+    setIncreaseError('');
+  };
+
+  const confirmIncreaseDebt = async () => {
+    const amt = parseFloat(increaseForm.amount);
+    if (!amt || amt <= 0) { setIncreaseError('Enter an amount greater than zero.'); return; }
+    setIncreasing(true);
+    setIncreaseError('');
+    const { usd: addedUsd } = toUsdLbp(amt, increaseForm.currency);
+    const newUsd = Number(increasingDebt.usd) + addedUsd;
+    const newLbp = newUsd * RATE;
+    const { data, error } = await supabase
+      .from('entries')
+      .update({
+        usd: newUsd,
+        lbp: newLbp,
+        amount_raw: increasingDebt.currency === 'LBP' ? newLbp : newUsd,
+        status: null,
+      })
+      .eq('id', increasingDebt.id)
+      .select()
+      .single();
+    setIncreasing(false);
+    if (error) { setIncreaseError('Could not save: ' + error.message); return; }
+    setAllEntries((prev) => prev.map((e) => (e.id === data.id ? data : e)));
+    setIncreasingDebt(null);
+  };
+
+  const addRecurringCost = async (section) => {
+    const amt = parseFloat(costForm.amount);
+    if (!amt || amt <= 0) { setCostError('Enter an amount greater than zero.'); return; }
+    if (!costForm.description.trim()) { setCostError(section === 'wage' ? 'Enter who this wage is for.' : 'Enter a description.'); return; }
+    setCostError('');
+    setSavingCost(true);
+    const { usd, lbp } = toUsdLbp(amt, costForm.currency);
+    const { data, error } = await supabase
+      .from('entries')
+      .insert({
+        user_id: session.user.id,
+        entry_date: costForm.date,
+        type: 'expense',
+        category: costForm.description.trim(),
+        where_text: '',
+        notes: '',
+        currency: costForm.currency,
+        amount_raw: amt,
+        usd, lbp,
+        cost_section: section,
+        recurrence: costForm.frequency,
+      })
+      .select()
+      .single();
+    setSavingCost(false);
+    if (error) { setCostError('Could not save: ' + error.message); return; }
+    setAllEntries((prev) => [data, ...prev].sort((a, b) => b.entry_date.localeCompare(a.entry_date)));
+    setCostForm((f) => ({ ...f, description: '', amount: '' }));
+  };
+
   const addGoal = async (e) => {
     e.preventDefault();
     const amt = parseFloat(goalForm.amount);
@@ -724,17 +793,28 @@ export default function Dashboard() {
     return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   };
 
-  const dailyStats = useMemo(() => {
-    const daySales = entries.filter((e) => e.type === 'sale' && e.entry_date === dailyDate && e.product);
-    const dayPayments = salePayments.filter((p) => p.payment_date === dailyDate);
-    return computeSaleStats(daySales, dayPayments);
-  }, [entries, salePayments, dailyDate]);
+  const reportStats = useMemo(() => {
+    const start = reportStartDate;
+    const end = reportEndDate < reportStartDate ? reportStartDate : reportEndDate;
+    const periodSales = entries.filter((e) => e.type === 'sale' && e.entry_date >= start && e.entry_date <= end && e.product);
+    const periodPayments = salePayments.filter((p) => p.payment_date >= start && p.payment_date <= end);
+    return computeSaleStats(periodSales, periodPayments);
+  }, [entries, salePayments, reportStartDate, reportEndDate]);
 
   const monthlyStats = useMemo(() => {
     const monthSales = entries.filter((e) => e.type === 'sale' && e.entry_date.slice(0, 7) === monthlyMonth && e.product);
     const monthPayments = salePayments.filter((p) => p.payment_date.slice(0, 7) === monthlyMonth);
     return computeSaleStats(monthSales, monthPayments);
   }, [entries, salePayments, monthlyMonth]);
+
+  const costEntries = useMemo(
+    () => entries.filter((e) => e.type === 'expense' && e.cost_section === 'cost').sort((a, b) => b.entry_date.localeCompare(a.entry_date)),
+    [entries]
+  );
+  const wageEntries = useMemo(
+    () => entries.filter((e) => e.type === 'expense' && e.cost_section === 'wage').sort((a, b) => b.entry_date.localeCompare(a.entry_date)),
+    [entries]
+  );
 
   const goalCards = useMemo(() => {
     return goals.map((g) => {
@@ -833,8 +913,10 @@ export default function Dashboard() {
             ...(canAdd ? [{ key: 'add', label: 'Add entry' }] : []),
             { key: 'ledger', label: 'Ledger' },
             { key: 'dashboard', label: 'Dashboard' },
-            { key: 'daily', label: 'Daily' },
+            { key: 'daily', label: 'Report' },
             { key: 'monthly', label: 'Monthly' },
+            { key: 'costs', label: '360 Cell Costs' },
+            { key: 'wages', label: 'Wages' },
             ...(plan === 'business' ? [{ key: 'goals', label: 'Goals' }] : []),
           ].map((t) => (
             <button key={t.key} onClick={() => setTab(t.key)} style={{
@@ -1178,6 +1260,9 @@ export default function Dashboard() {
                                           {canSettleDebt && isActiveDebt && (
                                             <button onClick={() => settleDebt(e)} style={{ background: 'none', border: '1px solid #8A6BA8', color: '#8A6BA8', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Settle</button>
                                           )}
+                                          {canSettleDebt && e.type === 'debt' && (
+                                            <button onClick={() => openIncreaseDebt(e)} style={{ background: 'none', border: '1px solid #8A6BA8', color: '#8A6BA8', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Add to debt</button>
+                                          )}
                                           {canSettleDebt && ((isDirectSale && saleBalanceDue > 0.001) || (isActiveDebt && debtBalanceDue > 0.001)) && (
                                             <button onClick={() => openRecordPayment(e)} style={{ background: 'none', border: '1px solid var(--blue)', color: 'var(--blue)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Record payment</button>
                                           )}
@@ -1298,11 +1383,17 @@ export default function Dashboard() {
 
         {tab === 'daily' && (
           <div>
-            <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, display: 'block', marginBottom: 20, maxWidth: 220 }}>
-              Report date
-              <input type="date" value={dailyDate} onChange={(e) => setDailyDate(e.target.value)} style={{ marginTop: 6 }} />
-            </label>
-            <SaleStatsPanel stats={dailyStats} />
+            <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+              <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, display: 'block', maxWidth: 220 }}>
+                From
+                <input type="date" value={reportStartDate} onChange={(e) => setReportStartDate(e.target.value)} style={{ marginTop: 6 }} />
+              </label>
+              <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, display: 'block', maxWidth: 220 }}>
+                To
+                <input type="date" value={reportEndDate} onChange={(e) => setReportEndDate(e.target.value)} style={{ marginTop: 6 }} />
+              </label>
+            </div>
+            <SaleStatsPanel stats={reportStats} />
           </div>
         )}
 
@@ -1314,6 +1405,24 @@ export default function Dashboard() {
             </label>
             <SaleStatsPanel stats={monthlyStats} />
           </div>
+        )}
+
+        {tab === 'costs' && (
+          <RecurringCostSection
+            title="360 Cell cost" placeholder="Description" entries={costEntries}
+            form={costForm} setForm={setCostForm} error={costError} saving={savingCost}
+            onSubmit={() => addRecurringCost('cost')}
+            canDelete={canDeleteEntry} confirmDeleteId={confirmDeleteId} setConfirmDeleteId={setConfirmDeleteId} onDelete={deleteEntry}
+          />
+        )}
+
+        {tab === 'wages' && (
+          <RecurringCostSection
+            title="wage" placeholder="Employee name" entries={wageEntries}
+            form={costForm} setForm={setCostForm} error={costError} saving={savingCost}
+            onSubmit={() => addRecurringCost('wage')}
+            canDelete={canDeleteEntry} confirmDeleteId={confirmDeleteId} setConfirmDeleteId={setConfirmDeleteId} onDelete={deleteEntry}
+          />
         )}
 
         {tab === 'goals' && plan === 'business' && (
@@ -1532,6 +1641,53 @@ export default function Dashboard() {
               </button>
               <button onClick={confirmRecordPayment} disabled={paying} style={{ flex: 1, padding: '11px 16px', border: 'none', borderRadius: 4, background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600, opacity: paying ? 0.6 : 1 }}>
                 {paying ? 'Saving…' : 'Record payment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {increasingDebt && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,43,57,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 50 }}>
+          <div style={{ background: 'var(--card)', width: '100%', maxWidth: 480, borderRadius: '8px 8px 0 0', padding: '22px 22px 28px', boxShadow: '0 -8px 30px rgba(0,0,0,0.2)' }}>
+            <h3 style={{ fontSize: 17, marginBottom: 4 }}>Add to debt — {increasingDebt.category}</h3>
+            <p style={{ color: 'var(--slate)', fontSize: 13, marginTop: 0, marginBottom: 18 }}>
+              Current amount: {fmtUSD(increasingDebt.usd)}
+            </p>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
+              <label style={{ flex: 1, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                Amount to add
+                <input type="number" step="any" min="0" placeholder="0" value={increaseForm.amount}
+                  onChange={(e) => setIncreaseForm((f) => ({ ...f, amount: e.target.value }))} style={{ marginTop: 6 }} autoFocus />
+              </label>
+              <label style={{ width: 110, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                Currency
+                <select value={increaseForm.currency} onChange={(e) => setIncreaseForm((f) => ({ ...f, currency: e.target.value }))} style={{ marginTop: 6 }}>
+                  <option value="USD">USD</option>
+                  <option value="LBP">LBP</option>
+                </select>
+              </label>
+            </div>
+
+            {increaseForm.amount && !Number.isNaN(parseFloat(increaseForm.amount)) && (
+              (() => {
+                const { usd: addedUsd } = toUsdLbp(parseFloat(increaseForm.amount), increaseForm.currency);
+                return (
+                  <div style={{ fontSize: 13, marginBottom: 16, color: 'var(--slate)' }}>
+                    New total: {fmtUSD(Number(increasingDebt.usd) + addedUsd)}
+                  </div>
+                );
+              })()
+            )}
+
+            {increaseError && <div style={{ color: 'var(--coral)', fontSize: 13, marginBottom: 14 }}>{increaseError}</div>}
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setIncreasingDebt(null)} style={{ flex: 1, padding: '11px 16px', border: '1px solid var(--paper-line)', borderRadius: 4, background: 'transparent', color: 'var(--slate)', fontWeight: 600 }}>
+                Cancel
+              </button>
+              <button onClick={confirmIncreaseDebt} disabled={increasing} style={{ flex: 1, padding: '11px 16px', border: 'none', borderRadius: 4, background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600, opacity: increasing ? 0.6 : 1 }}>
+                {increasing ? 'Saving…' : 'Add to debt'}
               </button>
             </div>
           </div>
@@ -1860,6 +2016,89 @@ function SaleStatsPanel({ stats }) {
         )}
       </ChartCard>
     </>
+  );
+}
+
+function RecurringCostSection({
+  title, placeholder, entries, form, setForm, error, saving, onSubmit,
+  canDelete, confirmDeleteId, setConfirmDeleteId, onDelete,
+}) {
+  const monthlyTotal = entries.filter((e) => e.recurrence === 'monthly').reduce((s, e) => s + Number(e.usd), 0);
+  const weeklyTotal = entries.filter((e) => e.recurrence === 'weekly').reduce((s, e) => s + Number(e.usd), 0);
+  return (
+    <div style={{ maxWidth: 900 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 24 }}>
+        <KpiCard label="Monthly total" value={fmtUSD(monthlyTotal)} color="var(--coral)" />
+        <KpiCard label="Weekly total" value={fmtUSD(weeklyTotal)} color="var(--coral)" />
+      </div>
+
+      <ChartCard title={`+ Add ${title.toLowerCase()}`}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
+          <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+            Date
+            <input type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} style={{ marginTop: 6 }} />
+          </label>
+          <label style={{ flex: 1, minWidth: 180, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+            {placeholder}
+            <input value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} style={{ marginTop: 6 }} />
+          </label>
+          <label style={{ width: 120, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+            Amount
+            <input type="number" step="any" min="0" placeholder="0" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} style={{ marginTop: 6 }} />
+          </label>
+          <label style={{ width: 100, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+            Currency
+            <select value={form.currency} onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))} style={{ marginTop: 6 }}>
+              <option value="LBP">LBP</option>
+              <option value="USD">USD</option>
+            </select>
+          </label>
+          <label style={{ width: 130, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+            Frequency
+            <select value={form.frequency} onChange={(e) => setForm((f) => ({ ...f, frequency: e.target.value }))} style={{ marginTop: 6 }}>
+              {FREQUENCIES.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
+            </select>
+          </label>
+          <button type="button" onClick={onSubmit} disabled={saving} style={{
+            padding: '10px 18px', border: 'none', borderRadius: 4,
+            background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600, opacity: saving ? 0.6 : 1,
+          }}>
+            {saving ? 'Saving…' : 'Add'}
+          </button>
+        </div>
+        {error && <div style={{ color: 'var(--coral)', fontSize: 13, marginTop: 10 }}>{error}</div>}
+      </ChartCard>
+
+      <div style={{ marginTop: 24, overflow: 'auto' }}>
+        {entries.length === 0 ? <NoData /> : (
+          <table>
+            <thead>
+              <tr>{['Date', 'Description', 'Frequency', 'Amount', ''].map((h) => <th key={h}>{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {entries.map((e) => (
+                <tr key={e.id}>
+                  <td>{e.entry_date}</td>
+                  <td>{e.category}</td>
+                  <td style={{ textTransform: 'capitalize' }}>{e.recurrence || '—'}</td>
+                  <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(e.usd)}</td>
+                  <td>
+                    {canDelete && (confirmDeleteId === e.id ? (
+                      <span style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => onDelete(e.id)} style={{ background: 'var(--coral)', color: '#fff', border: 'none', borderRadius: 3, padding: '3px 8px', fontSize: 11 }}>Delete</button>
+                        <button onClick={() => setConfirmDeleteId(null)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
+                      </span>
+                    ) : (
+                      <button onClick={() => setConfirmDeleteId(e.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>Delete</button>
+                    ))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
   );
 }
 
