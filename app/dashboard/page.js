@@ -180,6 +180,11 @@ export default function Dashboard() {
   const [costForm, setCostForm] = useState({ date: new Date().toISOString().slice(0, 10), description: '', amount: '', currency: 'LBP', frequency: 'monthly' });
   const [costError, setCostError] = useState('');
   const [savingCost, setSavingCost] = useState(false);
+  const [debtForm, setDebtForm] = useState({ date: new Date().toISOString().slice(0, 10), who: '', direction: 'owed_to_me', category: '', amount: '', currency: 'LBP', notes: '' });
+  const [debtFormError, setDebtFormError] = useState('');
+  const [savingDebt, setSavingDebt] = useState(false);
+  const [debtStartDate, setDebtStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [debtEndDate, setDebtEndDate] = useState(new Date().toISOString().slice(0, 10));
   const [salePayments, setSalePayments] = useState([]);
   const [reportStartDate, setReportStartDate] = useState(new Date().toISOString().slice(0, 10));
   const [reportEndDate, setReportEndDate] = useState(new Date().toISOString().slice(0, 10));
@@ -697,6 +702,35 @@ export default function Dashboard() {
     setCostForm((f) => ({ ...f, description: '', amount: '' }));
   };
 
+  const addDebtEntry = async () => {
+    const amt = parseFloat(debtForm.amount);
+    if (!amt || amt <= 0) { setDebtFormError('Enter an amount greater than zero.'); return; }
+    if (!debtForm.who.trim()) { setDebtFormError('Enter who this debt is with.'); return; }
+    setDebtFormError('');
+    setSavingDebt(true);
+    const { usd, lbp } = toUsdLbp(amt, debtForm.currency);
+    const { data, error } = await supabase
+      .from('entries')
+      .insert({
+        user_id: session.user.id,
+        entry_date: debtForm.date,
+        type: 'debt',
+        category: debtForm.category.trim() || 'Other',
+        where_text: debtForm.who.trim(),
+        notes: debtForm.notes.trim(),
+        currency: debtForm.currency,
+        amount_raw: amt,
+        usd, lbp,
+        debt_direction: debtForm.direction,
+      })
+      .select()
+      .single();
+    setSavingDebt(false);
+    if (error) { setDebtFormError('Could not save: ' + error.message); return; }
+    setAllEntries((prev) => [data, ...prev].sort((a, b) => b.entry_date.localeCompare(a.entry_date)));
+    setDebtForm((f) => ({ ...f, who: '', category: '', amount: '', notes: '' }));
+  };
+
   const addGoal = async (e) => {
     e.preventDefault();
     const amt = parseFloat(goalForm.amount);
@@ -886,6 +920,31 @@ export default function Dashboard() {
     [entries]
   );
 
+  const openDebts = useMemo(
+    () => entries.filter((e) => e.type === 'debt' && e.status !== 'settled').sort((a, b) => b.entry_date.localeCompare(a.entry_date)),
+    [entries]
+  );
+
+  const debtActivity = useMemo(() => {
+    const start = debtStartDate;
+    const end = debtEndDate < debtStartDate ? debtStartDate : debtEndDate;
+    const periodDebts = entries.filter((e) => e.type === 'debt' && e.entry_date >= start && e.entry_date <= end);
+    const newOwedToMe = periodDebts.filter((e) => e.debt_direction !== 'i_owe').reduce((s, e) => s + Number(e.usd), 0);
+    const newIOwe = periodDebts.filter((e) => e.debt_direction === 'i_owe').reduce((s, e) => s + Number(e.usd), 0);
+
+    const debtById = {};
+    entries.forEach((e) => { if (e.type === 'debt') debtById[e.id] = e; });
+    const periodPayments = salePayments.filter((p) => p.payment_date >= start && p.payment_date <= end && debtById[p.entry_id]);
+    const collectedOwedToMe = periodPayments
+      .filter((p) => debtById[p.entry_id].debt_direction !== 'i_owe')
+      .reduce((s, p) => s + Number(p.usd), 0);
+    const paidIOwe = periodPayments
+      .filter((p) => debtById[p.entry_id].debt_direction === 'i_owe')
+      .reduce((s, p) => s + Number(p.usd), 0);
+
+    return { transactions: periodDebts.length, newOwedToMe, newIOwe, collectedOwedToMe, paidIOwe };
+  }, [entries, salePayments, debtStartDate, debtEndDate]);
+
   const goalCards = useMemo(() => {
     return goals.map((g) => {
       const achieved = computeAchieved(g, entries);
@@ -987,6 +1046,7 @@ export default function Dashboard() {
             { key: 'monthly', label: 'Monthly' },
             { key: 'costs', label: '360 Cell Costs' },
             { key: 'wages', label: 'Wages' },
+            { key: 'debts', label: 'Debts' },
             ...(plan === 'business' ? [{ key: 'goals', label: 'Goals' }] : []),
           ].map((t) => (
             <button key={t.key} onClick={() => { if (t.key === 'add') cancelEditEntry(); setTab(t.key); }} style={{
@@ -1517,6 +1577,138 @@ export default function Dashboard() {
             onSubmit={() => addRecurringCost('wage')}
             canDelete={canDeleteEntry} confirmDeleteId={confirmDeleteId} setConfirmDeleteId={setConfirmDeleteId} onDelete={deleteEntry}
           />
+        )}
+
+        {tab === 'debts' && (
+          <div style={{ maxWidth: 900 }}>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+              <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, maxWidth: 220 }}>
+                From
+                <input type="date" value={debtStartDate} onChange={(e) => setDebtStartDate(e.target.value)} style={{ marginTop: 6 }} />
+              </label>
+              <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, maxWidth: 220 }}>
+                To
+                <input type="date" value={debtEndDate} onChange={(e) => setDebtEndDate(e.target.value)} style={{ marginTop: 6 }} />
+              </label>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 20 }}>
+              <KpiCard label="New — owed to me" value={fmtUSD(debtActivity.newOwedToMe)} color="var(--green)" />
+              <KpiCard label="New — I owe" value={fmtUSD(debtActivity.newIOwe)} color="var(--coral)" />
+              <KpiCard label="Collected (owed to me)" value={fmtUSD(debtActivity.collectedOwedToMe)} color="var(--green)" />
+              <KpiCard label="Paid off (I owe)" value={fmtUSD(debtActivity.paidIOwe)} color="var(--coral)" />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 32 }}>
+              <KpiCard label="Currently owed to me" value={fmtUSD(totals.debtOwedToMe)} color="var(--green)" />
+              <KpiCard label="Currently I owe" value={fmtUSD(totals.debtIOwe)} color="var(--coral)" />
+              <KpiCard label="Net debt" value={fmtUSD(totals.netDebt)} color={totals.netDebt >= 0 ? 'var(--green)' : 'var(--coral)'} bold />
+            </div>
+
+            {canAdd && (
+              <ChartCard title="+ Add debt">
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
+                  <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                    Date
+                    <input type="date" value={debtForm.date} onChange={(e) => setDebtForm((f) => ({ ...f, date: e.target.value }))} style={{ marginTop: 6 }} />
+                  </label>
+                  <label style={{ flex: 1, minWidth: 160, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                    Who
+                    <input value={debtForm.who} onChange={(e) => setDebtForm((f) => ({ ...f, who: e.target.value }))} style={{ marginTop: 6 }} />
+                  </label>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {[
+                      { key: 'owed_to_me', label: 'Owed to me' },
+                      { key: 'i_owe', label: 'I owe' },
+                    ].map((d) => (
+                      <button type="button" key={d.key} onClick={() => setDebtForm((f) => ({ ...f, direction: d.key }))} style={{
+                        padding: '10px 12px', borderRadius: 4, cursor: 'pointer',
+                        border: `1.5px solid ${debtForm.direction === d.key ? '#8A6BA8' : 'var(--paper-line)'}`,
+                        background: debtForm.direction === d.key ? '#8A6BA81a' : 'transparent',
+                        color: debtForm.direction === d.key ? '#8A6BA8' : 'var(--slate)', fontWeight: 600, fontSize: 13,
+                      }}>
+                        {d.label}
+                      </button>
+                    ))}
+                  </div>
+                  <label style={{ minWidth: 140, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                    Category
+                    <input list="debt-cat-suggestions" value={debtForm.category} onChange={(e) => setDebtForm((f) => ({ ...f, category: e.target.value }))} style={{ marginTop: 6 }} />
+                    <datalist id="debt-cat-suggestions">
+                      {CATEGORY_SUGGESTIONS.debt.map((c) => <option key={c} value={c} />)}
+                    </datalist>
+                  </label>
+                  <label style={{ width: 120, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                    Amount
+                    <input type="number" step="any" min="0" placeholder="0" value={debtForm.amount} onChange={(e) => setDebtForm((f) => ({ ...f, amount: e.target.value }))} style={{ marginTop: 6 }} />
+                  </label>
+                  <label style={{ width: 100, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                    Currency
+                    <select value={debtForm.currency} onChange={(e) => setDebtForm((f) => ({ ...f, currency: e.target.value }))} style={{ marginTop: 6 }}>
+                      <option value="LBP">LBP</option>
+                      <option value="USD">USD</option>
+                    </select>
+                  </label>
+                  <label style={{ flex: 1, minWidth: 160, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                    Notes (optional)
+                    <input value={debtForm.notes} onChange={(e) => setDebtForm((f) => ({ ...f, notes: e.target.value }))} style={{ marginTop: 6 }} />
+                  </label>
+                  <button type="button" onClick={addDebtEntry} disabled={savingDebt} style={{
+                    padding: '10px 18px', border: 'none', borderRadius: 4,
+                    background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600, opacity: savingDebt ? 0.6 : 1,
+                  }}>
+                    {savingDebt ? 'Saving…' : 'Add'}
+                  </button>
+                </div>
+                {debtFormError && <div style={{ color: 'var(--coral)', fontSize: 13, marginTop: 10 }}>{debtFormError}</div>}
+              </ChartCard>
+            )}
+
+            <div style={{ marginTop: 24, overflow: 'auto' }}>
+              <h3 style={{ fontSize: 16, marginBottom: 12 }}>Open debts</h3>
+              {openDebts.length === 0 ? <NoData /> : (
+                <table>
+                  <thead>
+                    <tr>{['Date', 'Who', 'Direction', 'Category', 'Amount', 'Balance due', 'Status', ''].map((h) => <th key={h}>{h}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {openDebts.map((e) => {
+                      const balanceDue = Number(e.usd) - Number(e.received_usd || 0);
+                      const status = debtCollectionStatus(e);
+                      const statusColor = status === 'Settled' ? 'var(--green)' : status === 'Partial' ? 'var(--gold)' : 'var(--coral)';
+                      return (
+                        <tr key={e.id}>
+                          <td>{e.entry_date}</td>
+                          <td>{e.where_text || '—'}</td>
+                          <td>{e.debt_direction === 'i_owe' ? 'I owe' : 'Owed to me'}</td>
+                          <td>{e.category}</td>
+                          <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(e.usd)}</td>
+                          <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(balanceDue)}</td>
+                          <td><span style={{ color: statusColor, fontWeight: 600 }}>{status}</span></td>
+                          <td>
+                            <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                              {canSettleDebt && (
+                                <button onClick={() => settleDebt(e)} style={{ background: 'none', border: '1px solid #8A6BA8', color: '#8A6BA8', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Settle</button>
+                              )}
+                              {canSettleDebt && (
+                                <button onClick={() => openIncreaseDebt(e)} style={{ background: 'none', border: '1px solid #8A6BA8', color: '#8A6BA8', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Add to debt</button>
+                              )}
+                              {canSettleDebt && balanceDue > 0.001 && (
+                                <button onClick={() => openRecordPayment(e)} style={{ background: 'none', border: '1px solid var(--blue)', color: 'var(--blue)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Record payment</button>
+                              )}
+                              {canDeleteEntry && (
+                                <button onClick={() => startEditEntry(e)} style={{ background: 'none', border: '1px solid var(--paper-line)', color: 'var(--ink)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Edit</button>
+                              )}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
         )}
 
         {tab === 'goals' && plan === 'business' && (
