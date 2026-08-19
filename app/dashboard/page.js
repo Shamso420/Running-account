@@ -193,6 +193,7 @@ export default function Dashboard() {
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const [editingEntryId, setEditingEntryId] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [filterType, setFilterType] = useState('all');
@@ -371,6 +372,35 @@ export default function Dashboard() {
     setEditingCustomer(null);
   };
 
+  const startEditEntry = (entry) => {
+    setForm({
+      date: entry.entry_date,
+      type: entry.type,
+      category: entry.category || '',
+      where: entry.where_text || '',
+      customerId: entry.customer_id || null,
+      amount: String(entry.amount_raw),
+      currency: entry.currency || 'USD',
+      notes: entry.notes || '',
+      debtDirection: entry.debt_direction || 'owed_to_me',
+      private: !!entry.private,
+      product: entry.product || '',
+      cost: entry.cost_raw != null ? String(entry.cost_raw) : '',
+      receivedNow: '',
+      supplier: entry.supplier_text || '',
+      paymentMethod: entry.payment_method || 'Cash',
+    });
+    setEditingEntryId(entry.id);
+    setFormError('');
+    setTab('add');
+  };
+
+  const cancelEditEntry = () => {
+    setEditingEntryId(null);
+    setForm(emptyForm());
+    setFormError('');
+  };
+
   const addEntry = async (e) => {
     e.preventDefault();
     const amt = parseFloat(form.amount);
@@ -382,6 +412,43 @@ export default function Dashboard() {
     setFormError('');
     setSaving(true);
     const { usd, lbp } = toUsdLbp(amt, form.currency);
+
+    if (editingEntryId) {
+      let costFields = {};
+      if (form.type === 'sale') {
+        const { usd: costUsd, lbp: costLbp } = toUsdLbp(costAmt, form.currency);
+        costFields = {
+          product: form.product.trim(), cost_raw: costAmt, cost_usd: costUsd, cost_lbp: costLbp,
+          supplier_text: form.supplier.trim(), payment_method: form.paymentMethod,
+        };
+      }
+      const { data, error } = await supabase
+        .from('entries')
+        .update({
+          entry_date: form.date,
+          category: form.category.trim(),
+          where_text: form.where.trim(),
+          notes: form.notes.trim(),
+          currency: form.currency,
+          amount_raw: amt,
+          usd, lbp,
+          debt_direction: form.type === 'debt' ? form.debtDirection : null,
+          customer_id: form.customerId || null,
+          private: useRoles && role === 'admin' ? !!form.private : undefined,
+          ...costFields,
+        })
+        .eq('id', editingEntryId)
+        .select()
+        .single();
+      setSaving(false);
+      if (error) { setFormError('Could not save: ' + error.message); return; }
+      setAllEntries((prev) => prev.map((en) => (en.id === data.id ? data : en)).sort((a, b) => b.entry_date.localeCompare(a.entry_date)));
+      setEditingEntryId(null);
+      setForm(emptyForm());
+      setTab('ledger');
+      return;
+    }
+
     let costFields = {};
     let initialPaymentRaw = 0;
     let initialPaymentUsdLbp = { usd: 0, lbp: 0 };
@@ -922,7 +989,7 @@ export default function Dashboard() {
             { key: 'wages', label: 'Wages' },
             ...(plan === 'business' ? [{ key: 'goals', label: 'Goals' }] : []),
           ].map((t) => (
-            <button key={t.key} onClick={() => setTab(t.key)} style={{
+            <button key={t.key} onClick={() => { if (t.key === 'add') cancelEditEntry(); setTab(t.key); }} style={{
               padding: '9px 16px', border: 'none', cursor: 'pointer',
               background: tab === t.key ? 'var(--ink)' : 'transparent',
               color: tab === t.key ? 'var(--paper)' : 'var(--slate)',
@@ -951,16 +1018,20 @@ export default function Dashboard() {
         {tab === 'add' && (
           <div style={{ maxWidth: 560 }}>
             <p style={{ color: 'var(--slate)', fontSize: 14, marginTop: 0, marginBottom: 24 }}>
-              Log what moved today — income, a purchase, an investment, a sale, or debt.
+              {editingEntryId
+                ? 'Editing this entry — change what needs updating and save.'
+                : 'Log what moved today — income, a purchase, an investment, a sale, or debt.'}
             </p>
             <form onSubmit={addEntry} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {TYPES.map((t) => (
-                  <button type="button" key={t.key} onClick={() => setForm((f) => ({ ...f, type: t.key, category: '', product: '', cost: '', receivedNow: '', supplier: '', paymentMethod: 'Cash' }))} style={{
-                    padding: '8px 14px', borderRadius: 20, cursor: 'pointer',
+                  <button type="button" key={t.key} disabled={!!editingEntryId}
+                    onClick={() => setForm((f) => ({ ...f, type: t.key, category: '', product: '', cost: '', receivedNow: '', supplier: '', paymentMethod: 'Cash' }))} style={{
+                    padding: '8px 14px', borderRadius: 20, cursor: editingEntryId ? 'default' : 'pointer',
                     border: `1.5px solid ${form.type === t.key ? t.color : 'var(--paper-line)'}`,
                     background: form.type === t.key ? t.color + '1a' : 'transparent',
                     color: form.type === t.key ? t.color : 'var(--slate)', fontWeight: 600, fontSize: 13,
+                    opacity: editingEntryId && form.type !== t.key ? 0.4 : 1,
                   }}>
                     {t.label}
                   </button>
@@ -1076,12 +1147,19 @@ export default function Dashboard() {
                       <input type="number" step="any" min="0" placeholder="0" value={form.cost}
                         onChange={(e) => setForm((f) => ({ ...f, cost: e.target.value }))} style={{ marginTop: 6 }} />
                     </label>
-                    <label style={{ flex: 1, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
-                      Received now (optional)
-                      <input type="number" step="any" min="0" placeholder="defaults to full amount" value={form.receivedNow}
-                        onChange={(e) => setForm((f) => ({ ...f, receivedNow: e.target.value }))} style={{ marginTop: 6 }} />
-                    </label>
+                    {!editingEntryId && (
+                      <label style={{ flex: 1, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                        Received now (optional)
+                        <input type="number" step="any" min="0" placeholder="defaults to full amount" value={form.receivedNow}
+                          onChange={(e) => setForm((f) => ({ ...f, receivedNow: e.target.value }))} style={{ marginTop: 6 }} />
+                      </label>
+                    )}
                   </div>
+                  {editingEntryId && (
+                    <p style={{ fontSize: 12, color: 'var(--slate)', margin: 0 }}>
+                      Payments already received aren't changed here — use "Record payment" on the Ledger row for that.
+                    </p>
+                  )}
                   <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
                     Payment method
                     <select value={form.paymentMethod} onChange={(e) => setForm((f) => ({ ...f, paymentMethod: e.target.value }))} style={{ marginTop: 6 }}>
@@ -1111,12 +1189,22 @@ export default function Dashboard() {
 
               {formError && <div style={{ color: 'var(--coral)', fontSize: 13 }}>{formError}</div>}
 
-              <button type="submit" disabled={saving} style={{
-                marginTop: 8, padding: '12px 20px', border: 'none', borderRadius: 4,
-                background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600, opacity: saving ? 0.6 : 1,
-              }}>
-                {saving ? 'Saving…' : 'Add to ledger'}
-              </button>
+              <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+                {editingEntryId && (
+                  <button type="button" onClick={cancelEditEntry} style={{
+                    flex: 1, padding: '12px 20px', border: '1px solid var(--paper-line)', borderRadius: 4,
+                    background: 'transparent', color: 'var(--slate)', fontWeight: 600,
+                  }}>
+                    Cancel
+                  </button>
+                )}
+                <button type="submit" disabled={saving} style={{
+                  flex: 1, padding: '12px 20px', border: 'none', borderRadius: 4,
+                  background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600, opacity: saving ? 0.6 : 1,
+                }}>
+                  {saving ? 'Saving…' : editingEntryId ? 'Save changes' : 'Add to ledger'}
+                </button>
+              </div>
             </form>
           </div>
         )}
@@ -1268,6 +1356,9 @@ export default function Dashboard() {
                                           )}
                                           {canSettleDebt && ((isDirectSale && saleBalanceDue > 0.001) || (isActiveDebt && debtBalanceDue > 0.001)) && (
                                             <button onClick={() => openRecordPayment(e)} style={{ background: 'none', border: '1px solid var(--blue)', color: 'var(--blue)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Record payment</button>
+                                          )}
+                                          {canDeleteEntry && (
+                                            <button onClick={() => startEditEntry(e)} style={{ background: 'none', border: '1px solid var(--paper-line)', color: 'var(--ink)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Edit</button>
                                           )}
                                           {canDeleteEntry && (confirmDeleteId === e.id ? (
                                             <span style={{ display: 'flex', gap: 6 }}>
