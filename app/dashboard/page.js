@@ -2311,11 +2311,13 @@ function RecurringCostSection({
 }) {
   const monthlyTotal = entries.filter((e) => e.recurrence === 'monthly').reduce((s, e) => s + Number(e.usd), 0);
   const weeklyTotal = entries.filter((e) => e.recurrence === 'weekly').reduce((s, e) => s + Number(e.usd), 0);
+  const onceTotal = entries.filter((e) => e.recurrence === 'once').reduce((s, e) => s + Number(e.usd), 0);
   return (
     <div style={{ maxWidth: 900 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 24 }}>
         <KpiCard label="Monthly total" value={fmtUSD(monthlyTotal)} color="var(--coral)" />
         <KpiCard label="Weekly total" value={fmtUSD(weeklyTotal)} color="var(--coral)" />
+        <KpiCard label="One-time total" value={fmtUSD(onceTotal)} color="var(--coral)" />
       </div>
 
       <ChartCard title={`+ Add ${title.toLowerCase()}`}>
