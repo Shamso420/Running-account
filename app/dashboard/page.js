@@ -1725,6 +1725,14 @@ export default function Dashboard() {
                               {canDeleteEntry && (
                                 <button onClick={() => startEditEntry(e)} style={{ background: 'none', border: '1px solid var(--paper-line)', color: 'var(--ink)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Edit</button>
                               )}
+                              {canDeleteEntry && (confirmDeleteId === e.id ? (
+                                <span style={{ display: 'flex', gap: 6 }}>
+                                  <button onClick={() => deleteEntry(e.id)} style={{ background: 'var(--coral)', color: '#fff', border: 'none', borderRadius: 3, padding: '3px 8px', fontSize: 11 }}>Delete</button>
+                                  <button onClick={() => setConfirmDeleteId(null)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
+                                </span>
+                              ) : (
+                                <button onClick={() => setConfirmDeleteId(e.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>Delete</button>
+                              ))}
                             </span>
                           </td>
                         </tr>
