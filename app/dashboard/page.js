@@ -703,6 +703,29 @@ export default function Dashboard() {
     setForm((f) => ({ ...f, description: '', amount: '' }));
   };
 
+  const editRecurringCost = async (id, form) => {
+    const amt = parseFloat(form.amount);
+    if (!amt || amt <= 0) return { error: 'Enter an amount greater than zero.' };
+    if (!form.description.trim()) return { error: 'Enter a description.' };
+    const { usd, lbp } = toUsdLbp(amt, form.currency);
+    const { data, error } = await supabase
+      .from('entries')
+      .update({
+        entry_date: form.date,
+        category: form.description.trim(),
+        currency: form.currency,
+        amount_raw: amt,
+        usd, lbp,
+        recurrence: form.frequency,
+      })
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) return { error: 'Could not save: ' + error.message };
+    setAllEntries((prev) => prev.map((e) => (e.id === id ? data : e)).sort((a, b) => b.entry_date.localeCompare(a.entry_date)));
+    return {};
+  };
+
   const addDebtEntry = async () => {
     const amt = parseFloat(debtForm.amount);
     if (!amt || amt <= 0) { setDebtFormError('Enter an amount greater than zero.'); return; }
@@ -1567,7 +1590,8 @@ export default function Dashboard() {
             title="360 Cell cost" placeholder="Description" entries={costEntries}
             form={costForm} setForm={setCostForm} error={costError} saving={savingCost}
             onSubmit={() => addRecurringCost('cost', costForm, setCostForm)}
-            canAdd={canAdd} canDelete={canDeleteEntry} confirmDeleteId={confirmDeleteId} setConfirmDeleteId={setConfirmDeleteId} onDelete={deleteEntry}
+            canAdd={canAdd} canEdit={canDeleteEntry} onEdit={editRecurringCost}
+            canDelete={canDeleteEntry} confirmDeleteId={confirmDeleteId} setConfirmDeleteId={setConfirmDeleteId} onDelete={deleteEntry}
           />
         )}
 
@@ -1576,7 +1600,8 @@ export default function Dashboard() {
             title="wage" placeholder="Employee name" entries={wageEntries}
             form={wageForm} setForm={setWageForm} error={costError} saving={savingCost}
             onSubmit={() => addRecurringCost('wage', wageForm, setWageForm)}
-            canAdd={canAdd} canDelete={canDeleteEntry} confirmDeleteId={confirmDeleteId} setConfirmDeleteId={setConfirmDeleteId} onDelete={deleteEntry}
+            canAdd={canAdd} canEdit={canDeleteEntry} onEdit={editRecurringCost}
+            canDelete={canDeleteEntry} confirmDeleteId={confirmDeleteId} setConfirmDeleteId={setConfirmDeleteId} onDelete={deleteEntry}
           />
         )}
 
@@ -2308,11 +2333,43 @@ function SaleStatsPanel({ stats }) {
 
 function RecurringCostSection({
   title, placeholder, entries, form, setForm, error, saving, onSubmit,
-  canAdd, canDelete, confirmDeleteId, setConfirmDeleteId, onDelete,
+  canAdd, canEdit, onEdit, canDelete, confirmDeleteId, setConfirmDeleteId, onDelete,
 }) {
   const monthlyTotal = entries.filter((e) => e.recurrence === 'monthly').reduce((s, e) => s + Number(e.usd), 0);
   const weeklyTotal = entries.filter((e) => e.recurrence === 'weekly').reduce((s, e) => s + Number(e.usd), 0);
   const onceTotal = entries.filter((e) => e.recurrence === 'once').reduce((s, e) => s + Number(e.usd), 0);
+
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+  const [editError, setEditError] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  const beginEdit = (e) => {
+    setEditingId(e.id);
+    setEditForm({
+      date: e.entry_date,
+      description: e.category || '',
+      amount: String(e.amount_raw),
+      currency: e.currency || 'LBP',
+      frequency: e.recurrence || 'monthly',
+    });
+    setEditError('');
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditForm(null);
+    setEditError('');
+  };
+
+  const saveEdit = async () => {
+    setSavingEdit(true);
+    const result = await onEdit(editingId, editForm);
+    setSavingEdit(false);
+    if (result?.error) { setEditError(result.error); return; }
+    cancelEdit();
+  };
+
   return (
     <div style={{ maxWidth: 900 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 24 }}>
@@ -2369,20 +2426,59 @@ function RecurringCostSection({
             <tbody>
               {entries.map((e) => (
                 <tr key={e.id}>
-                  <td>{e.entry_date}</td>
-                  <td>{e.category}</td>
-                  <td style={{ textTransform: 'capitalize' }}>{e.recurrence || '—'}</td>
-                  <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(e.usd)}</td>
-                  <td>
-                    {canDelete && (confirmDeleteId === e.id ? (
-                      <span style={{ display: 'flex', gap: 6 }}>
-                        <button onClick={() => onDelete(e.id)} style={{ background: 'var(--coral)', color: '#fff', border: 'none', borderRadius: 3, padding: '3px 8px', fontSize: 11 }}>Delete</button>
-                        <button onClick={() => setConfirmDeleteId(null)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
-                      </span>
-                    ) : (
-                      <button onClick={() => setConfirmDeleteId(e.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>Delete</button>
-                    ))}
-                  </td>
+                  {editingId === e.id ? (
+                    <>
+                      <td>
+                        <input type="date" value={editForm.date} onChange={(ev) => setEditForm((f) => ({ ...f, date: ev.target.value }))} style={{ width: 130 }} />
+                      </td>
+                      <td>
+                        <input value={editForm.description} onChange={(ev) => setEditForm((f) => ({ ...f, description: ev.target.value }))} style={{ width: 150 }} />
+                      </td>
+                      <td>
+                        <select value={editForm.frequency} onChange={(ev) => setEditForm((f) => ({ ...f, frequency: ev.target.value }))}>
+                          {FREQUENCIES.map((fr) => <option key={fr.key} value={fr.key}>{fr.label}</option>)}
+                        </select>
+                      </td>
+                      <td>
+                        <span style={{ display: 'flex', gap: 4 }}>
+                          <input type="number" step="any" min="0" value={editForm.amount} onChange={(ev) => setEditForm((f) => ({ ...f, amount: ev.target.value }))} style={{ width: 90 }} />
+                          <select value={editForm.currency} onChange={(ev) => setEditForm((f) => ({ ...f, currency: ev.target.value }))} style={{ width: 70 }}>
+                            <option value="LBP">LBP</option>
+                            <option value="USD">USD</option>
+                          </select>
+                        </span>
+                      </td>
+                      <td>
+                        <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <button onClick={saveEdit} disabled={savingEdit} style={{ background: 'var(--ink)', color: 'var(--paper)', border: 'none', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600, opacity: savingEdit ? 0.6 : 1 }}>
+                            {savingEdit ? 'Saving…' : 'Save'}
+                          </button>
+                          <button onClick={cancelEdit} style={{ background: 'none', border: '1px solid var(--paper-line)', color: 'var(--ink)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Cancel</button>
+                        </span>
+                        {editError && <div style={{ color: 'var(--coral)', fontSize: 11, marginTop: 4 }}>{editError}</div>}
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td>{e.entry_date}</td>
+                      <td>{e.category}</td>
+                      <td style={{ textTransform: 'capitalize' }}>{e.recurrence || '—'}</td>
+                      <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(e.usd)}</td>
+                      <td>
+                        <span style={{ display: 'flex', gap: 6 }}>
+                          {canEdit && <button onClick={() => beginEdit(e)} style={{ background: 'none', border: '1px solid var(--paper-line)', color: 'var(--ink)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Edit</button>}
+                          {canDelete && (confirmDeleteId === e.id ? (
+                            <span style={{ display: 'flex', gap: 6 }}>
+                              <button onClick={() => onDelete(e.id)} style={{ background: 'var(--coral)', color: '#fff', border: 'none', borderRadius: 3, padding: '3px 8px', fontSize: 11 }}>Delete</button>
+                              <button onClick={() => setConfirmDeleteId(null)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
+                            </span>
+                          ) : (
+                            <button onClick={() => setConfirmDeleteId(e.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>Delete</button>
+                          ))}
+                        </span>
+                      </td>
+                    </>
+                  )}
                 </tr>
               ))}
             </tbody>
