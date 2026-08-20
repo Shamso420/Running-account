@@ -846,7 +846,11 @@ export default function Dashboard() {
 
   const expenseByCategory = useMemo(() => {
     const m = {};
-    entries.filter((e) => e.type === 'expense').forEach((e) => { m[e.category] = (m[e.category] || 0) + Number(e.usd); });
+    entries.filter((e) => e.type === 'expense' && !e.cost_section).forEach((e) => { m[e.category] = (m[e.category] || 0) + Number(e.usd); });
+    const costsTotal = entries.filter((e) => e.type === 'expense' && e.cost_section === 'cost').reduce((s, e) => s + Number(e.usd), 0);
+    const wagesTotal = entries.filter((e) => e.type === 'expense' && e.cost_section === 'wage').reduce((s, e) => s + Number(e.usd), 0);
+    if (costsTotal > 0) m['360 Cell costs'] = costsTotal;
+    if (wagesTotal > 0) m['Wages'] = wagesTotal;
     return Object.entries(m).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
   }, [entries]);
 
