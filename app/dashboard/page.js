@@ -32,6 +32,15 @@ function saleProfitUsd(e) {
   return Number(e.usd) - Number(e.cost_usd || 0);
 }
 
+function invoiceProfitBreakdown(e) {
+  const isDirectSale = e.type === 'sale' && !!e.product;
+  const isSoldInvestment = e.type === 'investment' && e.status === 'sold';
+  if (!isDirectSale && !isSoldInvestment) return null;
+  const boughtFor = isDirectSale ? Number(e.cost_usd || 0) : Number(e.usd);
+  const soldFor = isDirectSale ? Number(e.usd) : Number(e.sold_usd);
+  return { boughtFor, soldFor, profit: soldFor - boughtFor };
+}
+
 function computeSaleStats(saleEntries, payments) {
   const transactions = saleEntries.length;
   const revenue = saleEntries.reduce((s, e) => s + Number(e.usd), 0);
@@ -1435,6 +1444,9 @@ export default function Dashboard() {
                                             Private
                                           </span>
                                         )}
+                                        {e.notes && (
+                                          <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 2 }}>{e.notes}</div>
+                                        )}
                                         {isSoldAsset && (
                                           <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 2 }}>
                                             Sold {e.sold_date} for {fmtUSD(e.sold_usd)} · <span style={{ color: assetProfit >= 0 ? 'var(--green)' : 'var(--coral)', fontWeight: 600 }}>{assetProfit >= 0 ? '+' : ''}{fmtUSD(assetProfit)}</span>
@@ -2145,6 +2157,29 @@ export default function Dashboard() {
                   <div style={{ fontSize: 13, marginTop: 2 }}>{invoiceDateStr(invoiceEntry.entry_date)}</div>
                 </div>
               </div>
+
+              {(() => {
+                const breakdown = invoiceProfitBreakdown(invoiceEntry);
+                if (!breakdown) return null;
+                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', border: '1px solid #c7c7c7', borderTop: 'none' }}>
+                    <div style={{ padding: '10px 12px', borderRight: '1px solid #c7c7c7' }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: '#12202b' }}>BOUGHT FOR</div>
+                      <div style={{ fontSize: 13, marginTop: 2, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(breakdown.boughtFor)}</div>
+                    </div>
+                    <div style={{ padding: '10px 12px', borderRight: '1px solid #c7c7c7' }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: '#12202b' }}>SOLD FOR</div>
+                      <div style={{ fontSize: 13, marginTop: 2, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(breakdown.soldFor)}</div>
+                    </div>
+                    <div style={{ padding: '10px 12px' }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: '#12202b' }}>PROFIT</div>
+                      <div style={{ fontSize: 13, marginTop: 2, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700, color: breakdown.profit >= 0 ? '#1c6b52' : '#b0463f' }}>
+                        {breakdown.profit >= 0 ? '+' : ''}{fmtUSD(breakdown.profit)}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <table style={{ width: '100%', marginTop: 26, borderCollapse: 'collapse' }}>
                 <thead>
