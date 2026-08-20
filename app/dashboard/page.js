@@ -162,6 +162,7 @@ export default function Dashboard() {
 
   const canEdit = !useRoles || role === 'admin';
   const canAdd = !useRoles || role === 'admin' || role === 'entry';
+  const is360Cell = session?.user?.email === 'info360cell@gmail.com';
   const canSettleDebt = !useRoles || role === 'admin' || role === 'entry';
   const canDeleteEntry = !useRoles || role === 'admin' || role === 'entry';
   const [goals, setGoals] = useState([]);
@@ -1057,14 +1058,19 @@ export default function Dashboard() {
 
   return (
     <div style={{ minHeight: '100vh' }}>
-      <div style={{ height: 4, background: 'linear-gradient(90deg, #3F6E52, #B8894C, #B0463F, #4C7A9E)' }} />
+      <div style={{ height: 4, background: is360Cell ? 'linear-gradient(90deg, #1F5FA8, #76C0E7)' : 'linear-gradient(90deg, #3F6E52, #B8894C, #B0463F, #4C7A9E)' }} />
       <header style={{ borderBottom: '1px solid var(--paper-line)', padding: '26px 24px 18px' }}>
         <div style={{ maxWidth: 1080, margin: '0 auto', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: '0.14em', color: 'var(--gold)', textTransform: 'uppercase', marginBottom: 6 }}>
-              Ledger No. 02
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            {is360Cell && (
+              <img src="/logo-360cell.png" alt="360 Cell" style={{ height: 44, width: 'auto', borderRadius: 6 }} />
+            )}
+            <div>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: '0.14em', color: is360Cell ? '#1F5FA8' : 'var(--gold)', textTransform: 'uppercase', marginBottom: 6 }}>
+                Ledger No. 02
+              </div>
+              <h1 style={{ fontSize: 30 }}>The Running Account</h1>
             </div>
-            <h1 style={{ fontSize: 30 }}>The Running Account</h1>
           </div>
           <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: 'var(--slate)', textAlign: 'right' }}>
             {session.user.email}<br />
@@ -1099,7 +1105,7 @@ export default function Dashboard() {
           ].map((t) => (
             <button key={t.key} onClick={() => { if (t.key === 'add') cancelEditEntry(); setTab(t.key); }} style={{
               padding: '9px 16px', border: 'none', cursor: 'pointer',
-              background: tab === t.key ? 'var(--ink)' : 'transparent',
+              background: tab === t.key ? (is360Cell ? '#1F5FA8' : 'var(--ink)') : 'transparent',
               color: tab === t.key ? 'var(--paper)' : 'var(--slate)',
               fontWeight: 500, borderRadius: '3px 3px 0 0',
             }}>
@@ -2104,10 +2110,14 @@ export default function Dashboard() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <h1 style={{ fontSize: 30, fontWeight: 800, color: '#12202b', letterSpacing: '0.01em' }}>INVOICE</h1>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
-                    <span style={{ fontFamily: "'Source Serif 4', serif", fontStyle: 'italic', fontWeight: 800, fontSize: 22, background: 'linear-gradient(120deg, #1f5fa8, #5fb8d9)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>360</span>
-                    <span style={{ fontFamily: "'Source Serif 4', serif", fontStyle: 'italic', fontWeight: 700, fontSize: 19, color: '#12202b' }}>CELL</span>
-                  </div>
+                  {is360Cell ? (
+                    <img src="/logo-360cell.png" alt="360 Cell" style={{ height: 40, width: 'auto', borderRadius: 5, marginLeft: 'auto' }} />
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+                      <span style={{ fontFamily: "'Source Serif 4', serif", fontStyle: 'italic', fontWeight: 800, fontSize: 22, background: 'linear-gradient(120deg, #1f5fa8, #5fb8d9)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>360</span>
+                      <span style={{ fontFamily: "'Source Serif 4', serif", fontStyle: 'italic', fontWeight: 700, fontSize: 19, color: '#12202b' }}>CELL</span>
+                    </div>
+                  )}
                   <div style={{ fontSize: 12, fontWeight: 700, color: '#12202b', marginTop: 6 }}>Phone: +961 81 055 797</div>
                 </div>
               </div>
