@@ -209,7 +209,6 @@ export default function Dashboard() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [editingEntryId, setEditingEntryId] = useState(null);
-  const [editingEntryStatus, setEditingEntryStatus] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [filterType, setFilterType] = useState('all');
@@ -407,14 +406,12 @@ export default function Dashboard() {
       paymentMethod: entry.payment_method || 'Cash',
     });
     setEditingEntryId(entry.id);
-    setEditingEntryStatus(entry.status || null);
     setFormError('');
     setTab('add');
   };
 
   const cancelEditEntry = () => {
     setEditingEntryId(null);
-    setEditingEntryStatus(null);
     setForm(emptyForm());
     setFormError('');
   };
@@ -442,14 +439,12 @@ export default function Dashboard() {
       } else if (form.type === 'investment') {
         costFields = { supplier_text: form.supplier.trim() };
       }
-      // Investment "sold to" can only be edited once the item is actually sold — otherwise leave where_text untouched.
-      const investmentEditingSold = form.type === 'investment' && editingEntryStatus === 'sold';
       const { data, error } = await supabase
         .from('entries')
         .update({
           entry_date: form.date,
           category: form.category.trim(),
-          where_text: form.type === 'investment' ? (investmentEditingSold ? form.where.trim() : undefined) : form.where.trim(),
+          where_text: form.where.trim(),
           notes: form.notes.trim(),
           currency: form.currency,
           amount_raw: amt,
@@ -466,7 +461,6 @@ export default function Dashboard() {
       if (error) { setFormError('Could not save: ' + error.message); return; }
       setAllEntries((prev) => prev.map((en) => (en.id === data.id ? data : en)).sort((a, b) => b.entry_date.localeCompare(a.entry_date)));
       setEditingEntryId(null);
-      setEditingEntryStatus(null);
       setForm(emptyForm());
       setTab('ledger');
       return;
@@ -494,8 +488,7 @@ export default function Dashboard() {
         entry_date: form.date,
         type: form.type,
         category: form.category.trim(),
-        // Investment entries start with no "sold to" — that's only set once the item is sold.
-        where_text: form.type === 'investment' ? '' : form.where.trim(),
+        where_text: form.where.trim(),
         notes: form.notes.trim(),
         currency: form.currency,
         amount_raw: amt,
@@ -532,7 +525,7 @@ export default function Dashboard() {
 
   const openSell = (entry) => {
     setSellingEntry(entry);
-    setSellForm({ amount: '', currency: entry.currency || 'USD', date: new Date().toISOString().slice(0, 10), soldTo: '' });
+    setSellForm({ amount: '', currency: entry.currency || 'USD', date: new Date().toISOString().slice(0, 10), soldTo: entry.where_text || '' });
     setSellError('');
   };
 
@@ -1218,7 +1211,7 @@ export default function Dashboard() {
                 </label>
               )}
 
-              {form.type === 'investment' && editingEntryId && editingEntryStatus === 'sold' && (
+              {form.type === 'investment' && (
                 <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
                   Sold to (optional)
                   <input placeholder="e.g. Karim" value={form.where}
