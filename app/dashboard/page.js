@@ -207,7 +207,7 @@ export default function Dashboard() {
   const [expandedMonth, setExpandedMonth] = useState(null);
   const [sellingEntry, setSellingEntry] = useState(null);
   const [invoiceEntry, setInvoiceEntry] = useState(null);
-  const [sellForm, setSellForm] = useState({ amount: '', currency: 'USD', date: new Date().toISOString().slice(0, 10) });
+  const [sellForm, setSellForm] = useState({ amount: '', currency: 'USD', date: new Date().toISOString().slice(0, 10), soldTo: '' });
   const [sellError, setSellError] = useState('');
   const [selling, setSelling] = useState(false);
 
@@ -427,19 +427,22 @@ export default function Dashboard() {
           product: form.product.trim(), cost_raw: costAmt, cost_usd: costUsd, cost_lbp: costLbp,
           supplier_text: form.supplier.trim(), payment_method: form.paymentMethod,
         };
+      } else if (form.type === 'investment') {
+        costFields = { supplier_text: form.supplier.trim() };
       }
       const { data, error } = await supabase
         .from('entries')
         .update({
           entry_date: form.date,
           category: form.category.trim(),
-          where_text: form.where.trim(),
+          // Investment entries only get "sold to" from the Sell flow — leave where_text untouched here.
+          where_text: form.type === 'investment' ? undefined : form.where.trim(),
           notes: form.notes.trim(),
           currency: form.currency,
           amount_raw: amt,
           usd, lbp,
           debt_direction: form.type === 'debt' ? form.debtDirection : null,
-          customer_id: form.customerId || null,
+          customer_id: form.type === 'investment' ? undefined : (form.customerId || null),
           private: useRoles && role === 'admin' ? !!form.private : undefined,
           ...costFields,
         })
@@ -467,6 +470,8 @@ export default function Dashboard() {
         product: form.product.trim(), cost_raw: costAmt, cost_usd: costUsd, cost_lbp: costLbp,
         received_usd: initialPaymentUsdLbp.usd, supplier_text: form.supplier.trim(), payment_method: form.paymentMethod,
       };
+    } else if (form.type === 'investment') {
+      costFields = { supplier_text: form.supplier.trim() };
     }
     const { data, error } = await supabase
       .from('entries')
@@ -475,13 +480,14 @@ export default function Dashboard() {
         entry_date: form.date,
         type: form.type,
         category: form.category.trim(),
-        where_text: form.where.trim(),
+        // Investment entries start with no "sold to" — that's only set once the item is sold.
+        where_text: form.type === 'investment' ? '' : form.where.trim(),
         notes: form.notes.trim(),
         currency: form.currency,
         amount_raw: amt,
         usd, lbp,
         debt_direction: form.type === 'debt' ? form.debtDirection : null,
-        customer_id: form.customerId || null,
+        customer_id: form.type === 'investment' ? null : (form.customerId || null),
         private: useRoles && role === 'admin' ? !!form.private : false,
         ...costFields,
       })
@@ -512,7 +518,7 @@ export default function Dashboard() {
 
   const openSell = (entry) => {
     setSellingEntry(entry);
-    setSellForm({ amount: '', currency: entry.currency || 'USD', date: new Date().toISOString().slice(0, 10) });
+    setSellForm({ amount: '', currency: entry.currency || 'USD', date: new Date().toISOString().slice(0, 10), soldTo: '' });
     setSellError('');
   };
 
@@ -524,6 +530,7 @@ export default function Dashboard() {
     const { usd: soldUsd, lbp: soldLbp } = toUsdLbp(saleAmt, sellForm.currency);
     const profitUsd = soldUsd - Number(sellingEntry.usd);
     const profitLbp = profitUsd * RATE;
+    const soldToText = sellForm.soldTo.trim();
 
     const { data: profitEntry, error: profitError } = await supabase
       .from('entries')
@@ -532,7 +539,7 @@ export default function Dashboard() {
         entry_date: sellForm.date,
         type: 'sale',
         category: sellingEntry.category,
-        where_text: sellingEntry.where_text,
+        where_text: soldToText,
         notes: `${profitUsd >= 0 ? 'Profit' : 'Loss'} from sale of ${sellingEntry.category}`,
         currency: 'USD',
         amount_raw: Math.max(Math.abs(profitUsd), 0.01),
@@ -554,6 +561,7 @@ export default function Dashboard() {
         sold_usd: soldUsd,
         sold_lbp: soldLbp,
         sold_date: sellForm.date,
+        where_text: soldToText,
         linked_profit_entry_id: profitEntry.id,
       })
       .eq('id', sellingEntry.id)
@@ -1188,30 +1196,40 @@ export default function Dashboard() {
                 </>
               )}
 
-              <div>
-                <div style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, marginBottom: 6 }}>
-                  {form.type === 'sale' ? 'Sold to (customer)' : 'Customer'}
-                </div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <div style={{
-                    flex: 1, padding: '10px 12px', border: '1px solid var(--paper-line)', borderRadius: 4,
-                    fontSize: 14, color: form.customerId ? 'var(--ink)' : 'var(--slate)', background: 'var(--card)',
-                  }}>
-                    {form.where || 'No customer selected'}
+              {form.type === 'investment' && (
+                <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                  Bought from (supplier, optional)
+                  <input placeholder="e.g. Alfa distributor" value={form.supplier}
+                    onChange={(e) => setForm((f) => ({ ...f, supplier: e.target.value }))} style={{ marginTop: 6 }} />
+                </label>
+              )}
+
+              {form.type !== 'investment' && (
+                <div>
+                  <div style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, marginBottom: 6 }}>
+                    {form.type === 'sale' ? 'Sold to (customer)' : 'Customer'}
                   </div>
-                  <button type="button" onClick={() => setCustomerModalOpen(true)} style={{
-                    padding: '10px 14px', border: '1px solid var(--paper-line)', borderRadius: 4,
-                    background: 'transparent', color: 'var(--ink)', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap',
-                  }}>
-                    Select customer
-                  </button>
-                  {form.customerId && (
-                    <button type="button" onClick={clearCustomer} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 18, padding: '0 4px' }}>
-                      ×
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <div style={{
+                      flex: 1, padding: '10px 12px', border: '1px solid var(--paper-line)', borderRadius: 4,
+                      fontSize: 14, color: form.customerId ? 'var(--ink)' : 'var(--slate)', background: 'var(--card)',
+                    }}>
+                      {form.where || 'No customer selected'}
+                    </div>
+                    <button type="button" onClick={() => setCustomerModalOpen(true)} style={{
+                      padding: '10px 14px', border: '1px solid var(--paper-line)', borderRadius: 4,
+                      background: 'transparent', color: 'var(--ink)', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap',
+                    }}>
+                      Select customer
                     </button>
-                  )}
+                    {form.customerId && (
+                      <button type="button" onClick={clearCustomer} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 18, padding: '0 4px' }}>
+                        ×
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
               <div style={{ display: 'flex', gap: 12 }}>
                 <label style={{ flex: 1, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
                   {form.type === 'sale' ? 'Selling price' : 'Amount'}
@@ -1407,6 +1425,12 @@ export default function Dashboard() {
                                         {isSoldAsset && (
                                           <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 2 }}>
                                             Sold {e.sold_date} for {fmtUSD(e.sold_usd)} · <span style={{ color: assetProfit >= 0 ? 'var(--green)' : 'var(--coral)', fontWeight: 600 }}>{assetProfit >= 0 ? '+' : ''}{fmtUSD(assetProfit)}</span>
+                                          </div>
+                                        )}
+                                        {e.type === 'investment' && (e.supplier_text || isSoldAsset) && (
+                                          <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 2 }}>
+                                            {e.supplier_text && <>Bought from {e.supplier_text}</>}
+                                            {isSoldAsset && <>{e.supplier_text && ' · '}sold to {e.where_text || '—'}</>}
                                           </div>
                                         )}
                                         {e.type === 'debt' && (
@@ -1882,6 +1906,11 @@ export default function Dashboard() {
               Sale date
               <input type="date" value={sellForm.date} onChange={(e) => setSellForm((f) => ({ ...f, date: e.target.value }))} style={{ marginTop: 6 }} />
             </label>
+            <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, display: 'block', marginBottom: 14 }}>
+              Sold to (optional)
+              <input placeholder="e.g. Karim" value={sellForm.soldTo}
+                onChange={(e) => setSellForm((f) => ({ ...f, soldTo: e.target.value }))} style={{ marginTop: 6 }} />
+            </label>
 
             {sellForm.amount && !Number.isNaN(parseFloat(sellForm.amount)) && (
               (() => {
@@ -2071,7 +2100,7 @@ export default function Dashboard() {
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 800, color: '#12202b' }}>Bought from:</div>
                   <div style={{ fontSize: 13, color: '#12202b', marginTop: 2 }}>
-                    {invoiceEntry.type === 'sale'
+                    {(invoiceEntry.type === 'sale' || invoiceEntry.type === 'investment')
                       ? (invoiceEntry.supplier_text || '—')
                       : (BOUGHT_FROM_TYPES.includes(invoiceEntry.type) || (invoiceEntry.type === 'debt' && invoiceEntry.debt_direction === 'i_owe')) ? (invoiceEntry.where_text || '—') : ''}
                   </div>
@@ -2079,7 +2108,9 @@ export default function Dashboard() {
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: 12, fontWeight: 800, color: '#12202b' }}>Sold to:</div>
                   <div style={{ fontSize: 13, color: '#12202b', marginTop: 2 }}>
-                    {(!BOUGHT_FROM_TYPES.includes(invoiceEntry.type) && !(invoiceEntry.type === 'debt' && invoiceEntry.debt_direction === 'i_owe')) ? (invoiceEntry.where_text || '—') : ''}
+                    {invoiceEntry.type === 'investment'
+                      ? (invoiceEntry.status === 'sold' ? (invoiceEntry.where_text || '—') : '')
+                      : (!BOUGHT_FROM_TYPES.includes(invoiceEntry.type) && !(invoiceEntry.type === 'debt' && invoiceEntry.debt_direction === 'i_owe')) ? (invoiceEntry.where_text || '—') : ''}
                   </div>
                 </div>
               </div>
