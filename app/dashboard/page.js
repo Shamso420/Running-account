@@ -26,6 +26,7 @@ const emptyForm = () => ({
   receivedNow: '',
   supplier: '',
   paymentMethod: 'Cash',
+  quantity: '1',
 });
 
 function saleProfitUsd(e) {
@@ -201,6 +202,15 @@ export default function Dashboard() {
   const [savingDebt, setSavingDebt] = useState(false);
   const [debtStartDate, setDebtStartDate] = useState(new Date().toISOString().slice(0, 10));
   const [debtEndDate, setDebtEndDate] = useState(new Date().toISOString().slice(0, 10));
+  const [inventoryItems, setInventoryItems] = useState([]);
+  const [invForm, setInvForm] = useState({ productName: '', quantity: '', notes: '' });
+  const [invError, setInvError] = useState('');
+  const [savingInv, setSavingInv] = useState(false);
+  const [confirmDeleteInvId, setConfirmDeleteInvId] = useState(null);
+  const [editingInvId, setEditingInvId] = useState(null);
+  const [editInvForm, setEditInvForm] = useState(null);
+  const [editInvError, setEditInvError] = useState('');
+  const [savingInvEdit, setSavingInvEdit] = useState(false);
   const [salePayments, setSalePayments] = useState([]);
   const [reportStartDate, setReportStartDate] = useState(new Date().toISOString().slice(0, 10));
   const [reportEndDate, setReportEndDate] = useState(new Date().toISOString().slice(0, 10));
@@ -279,6 +289,12 @@ export default function Dashboard() {
         .select('*')
         .order('payment_date', { ascending: false });
       setSalePayments(paymentsData || []);
+
+      const { data: inventoryData } = await supabase
+        .from('inventory')
+        .select('*')
+        .order('product_name', { ascending: true });
+      setInventoryItems(inventoryData || []);
 
       if (profile?.plan === 'business') {
         const { data: goalsData } = await supabase
@@ -410,6 +426,7 @@ export default function Dashboard() {
       receivedNow: '',
       supplier: entry.supplier_text || '',
       paymentMethod: entry.payment_method || 'Cash',
+      quantity: entry.quantity != null ? String(entry.quantity) : '1',
     });
     setEditingEntryId(entry.id);
     setFormError('');
@@ -430,6 +447,8 @@ export default function Dashboard() {
     if (form.type === 'sale' && !form.product.trim()) { setFormError('Enter the product or service sold.'); return; }
     const costAmt = form.type === 'sale' ? parseFloat(form.cost) : null;
     if (form.type === 'sale' && (Number.isNaN(costAmt) || costAmt < 0)) { setFormError('Enter a cost (0 or more).'); return; }
+    const saleQty = form.type === 'sale' ? parseFloat(form.quantity) : null;
+    if (form.type === 'sale' && (!saleQty || saleQty <= 0)) { setFormError('Enter a quantity of 1 or more.'); return; }
     setFormError('');
     setSaving(true);
     const { usd, lbp } = toUsdLbp(amt, form.currency);
@@ -440,7 +459,7 @@ export default function Dashboard() {
         const { usd: costUsd, lbp: costLbp } = toUsdLbp(costAmt, form.currency);
         costFields = {
           product: form.product.trim(), cost_raw: costAmt, cost_usd: costUsd, cost_lbp: costLbp,
-          supplier_text: form.supplier.trim(), payment_method: form.paymentMethod,
+          supplier_text: form.supplier.trim(), payment_method: form.paymentMethod, quantity: saleQty,
         };
       } else if (form.type === 'investment') {
         costFields = { supplier_text: form.supplier.trim() };
@@ -482,7 +501,7 @@ export default function Dashboard() {
       initialPaymentUsdLbp = toUsdLbp(initialPaymentRaw, form.currency);
       costFields = {
         product: form.product.trim(), cost_raw: costAmt, cost_usd: costUsd, cost_lbp: costLbp,
-        received_usd: initialPaymentUsdLbp.usd, supplier_text: form.supplier.trim(), payment_method: form.paymentMethod,
+        received_usd: initialPaymentUsdLbp.usd, supplier_text: form.supplier.trim(), payment_method: form.paymentMethod, quantity: saleQty,
       };
     } else if (form.type === 'investment') {
       costFields = { supplier_text: form.supplier.trim() };
@@ -509,6 +528,9 @@ export default function Dashboard() {
     setSaving(false);
     if (error) { setFormError('Could not save: ' + error.message); return; }
     setAllEntries((prev) => [data, ...prev].sort((a, b) => b.entry_date.localeCompare(a.entry_date)));
+    if (form.type === 'sale') {
+      await deductInventoryForSale(form.product, saleQty);
+    }
     if (form.type === 'sale' && initialPaymentRaw > 0) {
       const { data: paymentRow } = await supabase
         .from('sale_payments')
@@ -774,6 +796,91 @@ export default function Dashboard() {
     if (error) { setDebtFormError('Could not save: ' + error.message); return; }
     setAllEntries((prev) => [data, ...prev].sort((a, b) => b.entry_date.localeCompare(a.entry_date)));
     setDebtForm((f) => ({ ...f, who: '', category: '', amount: '', notes: '' }));
+  };
+
+  const findInventoryMatch = (productName) => {
+    const name = productName.trim().toLowerCase();
+    if (!name) return null;
+    return inventoryItems.find((i) => i.product_name.toLowerCase() === name) || null;
+  };
+
+  const addInventoryItem = async () => {
+    const name = invForm.productName.trim();
+    const qty = parseFloat(invForm.quantity);
+    if (!name) { setInvError('Enter a product name.'); return; }
+    if (!qty || qty <= 0) { setInvError('Enter a quantity greater than zero.'); return; }
+    setInvError('');
+    setSavingInv(true);
+    const existing = findInventoryMatch(name);
+    if (existing) {
+      const { data, error } = await supabase
+        .from('inventory')
+        .update({ quantity: Number(existing.quantity) + qty })
+        .eq('id', existing.id)
+        .select()
+        .single();
+      setSavingInv(false);
+      if (error) { setInvError('Could not save: ' + error.message); return; }
+      setInventoryItems((prev) => prev.map((i) => (i.id === existing.id ? data : i)));
+    } else {
+      const { data, error } = await supabase
+        .from('inventory')
+        .insert({ user_id: session.user.id, product_name: name, quantity: qty, notes: invForm.notes.trim() })
+        .select()
+        .single();
+      setSavingInv(false);
+      if (error) { setInvError('Could not save: ' + error.message); return; }
+      setInventoryItems((prev) => [...prev, data].sort((a, b) => a.product_name.localeCompare(b.product_name)));
+    }
+    setInvForm({ productName: '', quantity: '', notes: '' });
+  };
+
+  const deleteInventoryItem = async (id) => {
+    const { error } = await supabase.from('inventory').delete().eq('id', id);
+    if (!error) setInventoryItems((prev) => prev.filter((i) => i.id !== id));
+    setConfirmDeleteInvId(null);
+  };
+
+  const beginEditInventory = (item) => {
+    setEditingInvId(item.id);
+    setEditInvForm({ productName: item.product_name, quantity: String(item.quantity), notes: item.notes || '' });
+    setEditInvError('');
+  };
+
+  const cancelEditInventory = () => {
+    setEditingInvId(null);
+    setEditInvForm(null);
+    setEditInvError('');
+  };
+
+  const saveEditInventory = async () => {
+    const name = editInvForm.productName.trim();
+    const qty = parseFloat(editInvForm.quantity);
+    if (!name) { setEditInvError('Enter a product name.'); return; }
+    if (Number.isNaN(qty)) { setEditInvError('Enter a valid quantity.'); return; }
+    setSavingInvEdit(true);
+    const { data, error } = await supabase
+      .from('inventory')
+      .update({ product_name: name, quantity: qty, notes: editInvForm.notes.trim() })
+      .eq('id', editingInvId)
+      .select()
+      .single();
+    setSavingInvEdit(false);
+    if (error) { setEditInvError('Could not save: ' + error.message); return; }
+    setInventoryItems((prev) => prev.map((i) => (i.id === data.id ? data : i)).sort((a, b) => a.product_name.localeCompare(b.product_name)));
+    cancelEditInventory();
+  };
+
+  const deductInventoryForSale = async (productName, qty) => {
+    const match = findInventoryMatch(productName);
+    if (!match) return;
+    const { data, error } = await supabase
+      .from('inventory')
+      .update({ quantity: Number(match.quantity) - qty })
+      .eq('id', match.id)
+      .select()
+      .single();
+    if (!error) setInventoryItems((prev) => prev.map((i) => (i.id === match.id ? data : i)));
   };
 
   const addGoal = async (e) => {
@@ -1101,6 +1208,7 @@ export default function Dashboard() {
             { key: 'costs', label: '360 Cell Costs' },
             { key: 'wages', label: 'Wages' },
             { key: 'debts', label: 'Debts' },
+            { key: 'inventory', label: 'Inventory' },
             ...(plan === 'business' ? [{ key: 'goals', label: 'Goals' }] : []),
           ].map((t) => (
             <button key={t.key} onClick={() => { if (t.key === 'add') cancelEditEntry(); setTab(t.key); }} style={{
@@ -1140,7 +1248,7 @@ export default function Dashboard() {
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {TYPES.map((t) => (
                   <button type="button" key={t.key} disabled={!!editingEntryId}
-                    onClick={() => setForm((f) => ({ ...f, type: t.key, category: '', product: '', cost: '', receivedNow: '', supplier: '', paymentMethod: 'Cash' }))} style={{
+                    onClick={() => setForm((f) => ({ ...f, type: t.key, category: '', product: '', cost: '', receivedNow: '', supplier: '', paymentMethod: 'Cash', quantity: '1' }))} style={{
                     padding: '8px 14px', borderRadius: 20, cursor: editingEntryId ? 'default' : 'pointer',
                     border: `1.5px solid ${form.type === t.key ? t.color : 'var(--paper-line)'}`,
                     background: form.type === t.key ? t.color + '1a' : 'transparent',
@@ -1201,11 +1309,30 @@ export default function Dashboard() {
 
               {form.type === 'sale' && (
                 <>
-                  <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
-                    Product / service sold
-                    <input placeholder="e.g. 11GB uShare, iPhone case" value={form.product}
-                      onChange={(e) => setForm((f) => ({ ...f, product: e.target.value }))} style={{ marginTop: 6 }} />
-                  </label>
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <label style={{ flex: 1, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                      Product / service sold
+                      <input list="inventory-product-suggestions" placeholder="e.g. 11GB uShare, iPhone case" value={form.product}
+                        onChange={(e) => setForm((f) => ({ ...f, product: e.target.value }))} style={{ marginTop: 6 }} />
+                      <datalist id="inventory-product-suggestions">
+                        {inventoryItems.map((i) => <option key={i.id} value={i.product_name} />)}
+                      </datalist>
+                    </label>
+                    <label style={{ width: 100, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                      Quantity
+                      <input type="number" step="1" min="1" value={form.quantity}
+                        onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))} style={{ marginTop: 6 }} />
+                    </label>
+                  </div>
+                  {(() => {
+                    const match = inventoryItems.find((i) => i.product_name.toLowerCase() === form.product.trim().toLowerCase());
+                    if (!form.product.trim() || !match) return null;
+                    return (
+                      <p style={{ fontSize: 12, color: 'var(--slate)', margin: '-8px 0 0' }}>
+                        In stock: {match.quantity}{editingEntryId ? ' (quantity here won’t re-adjust stock)' : ''}
+                      </p>
+                    );
+                  })()}
                   <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
                     Bought from (supplier, optional)
                     <input placeholder="e.g. Alfa distributor" value={form.supplier}
@@ -1475,7 +1602,7 @@ export default function Dashboard() {
                                         )}
                                         {isDirectSale && (
                                           <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 2 }}>
-                                            {e.product} · Cost {fmtUSD(e.cost_usd)} · <span style={{ color: saleProfitUsd(e) >= 0 ? 'var(--green)' : 'var(--coral)', fontWeight: 600 }}>{saleProfitUsd(e) >= 0 ? '+' : ''}{fmtUSD(saleProfitUsd(e))}</span> ({Number(e.usd) > 0 ? ((saleProfitUsd(e) / Number(e.usd)) * 100).toFixed(1) : '0.0'}% margin)
+                                            {e.product}{e.quantity != null && Number(e.quantity) !== 1 && <> × {e.quantity}</>} · Cost {fmtUSD(e.cost_usd)} · <span style={{ color: saleProfitUsd(e) >= 0 ? 'var(--green)' : 'var(--coral)', fontWeight: 600 }}>{saleProfitUsd(e) >= 0 ? '+' : ''}{fmtUSD(saleProfitUsd(e))}</span> ({Number(e.usd) > 0 ? ((saleProfitUsd(e) / Number(e.usd)) * 100).toFixed(1) : '0.0'}% margin)
                                             {e.supplier_text && <><br />Bought from {e.supplier_text} · sold to {e.where_text || '—'}</>}
                                             <br />
                                             <span style={{ color: saleStatusColor, fontWeight: 600 }}>{saleStatus}</span>
@@ -1796,6 +1923,108 @@ export default function Dashboard() {
                               ))}
                             </span>
                           </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
+
+        {tab === 'inventory' && (
+          <div style={{ maxWidth: 900 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 24 }}>
+              <KpiCard label="Products tracked" value={String(inventoryItems.length)} color="var(--gold)" />
+              <KpiCard label="Total units in stock" value={String(inventoryItems.reduce((s, i) => s + Number(i.quantity), 0))} color="var(--gold)" />
+              <KpiCard label="Out of stock" value={String(inventoryItems.filter((i) => Number(i.quantity) <= 0).length)} color="var(--coral)" />
+            </div>
+
+            {canAdd && (
+              <ChartCard title="+ Add / restock product">
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
+                  <label style={{ flex: 1, minWidth: 180, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                    Product name
+                    <input placeholder="e.g. iPhone case" value={invForm.productName}
+                      onChange={(e) => setInvForm((f) => ({ ...f, productName: e.target.value }))} style={{ marginTop: 6 }} />
+                  </label>
+                  <label style={{ width: 120, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                    Quantity
+                    <input type="number" step="1" min="1" placeholder="0" value={invForm.quantity}
+                      onChange={(e) => setInvForm((f) => ({ ...f, quantity: e.target.value }))} style={{ marginTop: 6 }} />
+                  </label>
+                  <label style={{ flex: 1, minWidth: 160, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                    Notes (optional)
+                    <input value={invForm.notes} onChange={(e) => setInvForm((f) => ({ ...f, notes: e.target.value }))} style={{ marginTop: 6 }} />
+                  </label>
+                  <button type="button" onClick={addInventoryItem} disabled={savingInv} style={{
+                    padding: '10px 18px', border: 'none', borderRadius: 4,
+                    background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600, opacity: savingInv ? 0.6 : 1,
+                  }}>
+                    {savingInv ? 'Saving…' : 'Add'}
+                  </button>
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--slate)', margin: '10px 0 0' }}>
+                  If the product name already exists, this adds to its current stock instead of creating a duplicate.
+                </p>
+                {invError && <div style={{ color: 'var(--coral)', fontSize: 13, marginTop: 10 }}>{invError}</div>}
+              </ChartCard>
+            )}
+
+            <div style={{ marginTop: 24, overflow: 'auto' }}>
+              {inventoryItems.length === 0 ? <NoData /> : (
+                <table>
+                  <thead>
+                    <tr>{['Product', 'In stock', 'Notes', ''].map((h) => <th key={h}>{h}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {inventoryItems.map((i) => {
+                      const qty = Number(i.quantity);
+                      const stockColor = qty <= 0 ? 'var(--coral)' : qty <= 5 ? 'var(--gold)' : 'var(--ink)';
+                      return (
+                        <tr key={i.id}>
+                          {editingInvId === i.id ? (
+                            <>
+                              <td>
+                                <input value={editInvForm.productName} onChange={(e) => setEditInvForm((f) => ({ ...f, productName: e.target.value }))} style={{ width: 160 }} />
+                              </td>
+                              <td>
+                                <input type="number" step="1" value={editInvForm.quantity} onChange={(e) => setEditInvForm((f) => ({ ...f, quantity: e.target.value }))} style={{ width: 80 }} />
+                              </td>
+                              <td>
+                                <input value={editInvForm.notes} onChange={(e) => setEditInvForm((f) => ({ ...f, notes: e.target.value }))} style={{ width: 150 }} />
+                              </td>
+                              <td>
+                                <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                  <button onClick={saveEditInventory} disabled={savingInvEdit} style={{ background: 'var(--ink)', color: 'var(--paper)', border: 'none', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600, opacity: savingInvEdit ? 0.6 : 1 }}>
+                                    {savingInvEdit ? 'Saving…' : 'Save'}
+                                  </button>
+                                  <button onClick={cancelEditInventory} style={{ background: 'none', border: '1px solid var(--paper-line)', color: 'var(--ink)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Cancel</button>
+                                </span>
+                                {editInvError && <div style={{ color: 'var(--coral)', fontSize: 11, marginTop: 4 }}>{editInvError}</div>}
+                              </td>
+                            </>
+                          ) : (
+                            <>
+                              <td>{i.product_name}</td>
+                              <td style={{ fontFamily: "'IBM Plex Mono', monospace", color: stockColor, fontWeight: 600 }}>{qty}</td>
+                              <td style={{ color: 'var(--slate)' }}>{i.notes || '—'}</td>
+                              <td>
+                                <span style={{ display: 'flex', gap: 6 }}>
+                                  {canDeleteEntry && <button onClick={() => beginEditInventory(i)} style={{ background: 'none', border: '1px solid var(--paper-line)', color: 'var(--ink)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Edit</button>}
+                                  {canDeleteEntry && (confirmDeleteInvId === i.id ? (
+                                    <span style={{ display: 'flex', gap: 6 }}>
+                                      <button onClick={() => deleteInventoryItem(i.id)} style={{ background: 'var(--coral)', color: '#fff', border: 'none', borderRadius: 3, padding: '3px 8px', fontSize: 11 }}>Delete</button>
+                                      <button onClick={() => setConfirmDeleteInvId(null)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
+                                    </span>
+                                  ) : (
+                                    <button onClick={() => setConfirmDeleteInvId(i.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>Delete</button>
+                                  ))}
+                                </span>
+                              </td>
+                            </>
+                          )}
                         </tr>
                       );
                     })}
