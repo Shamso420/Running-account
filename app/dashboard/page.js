@@ -41,6 +41,11 @@ function invoiceProfitBreakdown(e) {
   return { boughtFor, soldFor, profit: soldFor - boughtFor };
 }
 
+function invoiceAmountUsd(e) {
+  if (e.type === 'investment' && e.status === 'sold') return Number(e.sold_usd);
+  return Number(e.usd);
+}
+
 function computeSaleStats(saleEntries, payments) {
   const transactions = saleEntries.length;
   const revenue = saleEntries.reduce((s, e) => s + Number(e.usd), 0);
@@ -2191,8 +2196,8 @@ export default function Dashboard() {
                   <tr>
                     <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b' }}>{invoiceEntry.id.slice(0, 8).toUpperCase()}</td>
                     <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b' }}>{invoiceEntry.category}{invoiceEntry.notes ? ` — ${invoiceEntry.notes}` : ''}</td>
-                    <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b', textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(invoiceEntry.usd)}</td>
-                    <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b', textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(invoiceEntry.usd)}</td>
+                    <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b', textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(invoiceAmountUsd(invoiceEntry))}</td>
+                    <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b', textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(invoiceAmountUsd(invoiceEntry))}</td>
                   </tr>
                 </tbody>
               </table>
@@ -2200,13 +2205,13 @@ export default function Dashboard() {
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 26 }}>
                 <div style={{ width: 220 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 13 }}>
-                    <span>Subtotal</span><span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(invoiceEntry.usd)}</span>
+                    <span>Subtotal</span><span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(invoiceAmountUsd(invoiceEntry))}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 13 }}>
                     <span>Sales Tax</span><span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(0)}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: 15, fontWeight: 700, borderTop: '1px solid #12202b', marginTop: 4 }}>
-                    <span>Total</span><span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(invoiceEntry.usd)}</span>
+                    <span>Total</span><span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(invoiceAmountUsd(invoiceEntry))}</span>
                   </div>
                 </div>
               </div>
