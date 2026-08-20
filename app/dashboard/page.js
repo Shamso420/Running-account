@@ -1072,6 +1072,11 @@ export default function Dashboard() {
     [entries]
   );
 
+  const settledDebts = useMemo(
+    () => entries.filter((e) => e.type === 'debt' && e.status === 'settled').sort((a, b) => b.entry_date.localeCompare(a.entry_date)),
+    [entries]
+  );
+
   const debtActivity = useMemo(() => {
     const start = debtStartDate;
     const end = debtEndDate < debtStartDate ? debtStartDate : debtEndDate;
@@ -1917,6 +1922,40 @@ export default function Dashboard() {
                         </tr>
                       );
                     })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div style={{ marginTop: 40, overflow: 'auto' }}>
+              <h3 style={{ fontSize: 16, marginBottom: 12, color: 'var(--slate)' }}>Settled debts</h3>
+              {settledDebts.length === 0 ? <NoData /> : (
+                <table>
+                  <thead>
+                    <tr>{['Date', 'Who', 'Direction', 'Category', 'Amount', ''].map((h) => <th key={h}>{h}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {settledDebts.map((e) => (
+                      <tr key={e.id} style={{ color: 'var(--slate)' }}>
+                        <td>{e.entry_date}</td>
+                        <td>{e.where_text || '—'}</td>
+                        <td>{e.debt_direction === 'i_owe' ? 'I owe' : 'Owed to me'}</td>
+                        <td>{e.category}</td>
+                        <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(e.usd)}</td>
+                        <td>
+                          <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                            {canDeleteEntry && (confirmDeleteId === e.id ? (
+                              <span style={{ display: 'flex', gap: 6 }}>
+                                <button onClick={() => deleteEntry(e.id)} style={{ background: 'var(--coral)', color: '#fff', border: 'none', borderRadius: 3, padding: '3px 8px', fontSize: 11 }}>Delete</button>
+                                <button onClick={() => setConfirmDeleteId(null)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
+                              </span>
+                            ) : (
+                              <button onClick={() => setConfirmDeleteId(e.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>Delete</button>
+                            ))}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               )}
