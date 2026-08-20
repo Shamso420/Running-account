@@ -1374,7 +1374,11 @@ export default function Dashboard() {
                 {monthGroups.map((g) => {
                   const isOpen = expandedMonth === g.month;
                   const catMap = {};
-                  g.entries.forEach((e) => { catMap[e.category] = (catMap[e.category] || 0) + Number(e.usd); });
+                  g.entries.filter((e) => !e.cost_section).forEach((e) => { catMap[e.category] = (catMap[e.category] || 0) + Number(e.usd); });
+                  const costsTotal = g.entries.filter((e) => e.cost_section === 'cost').reduce((s, e) => s + Number(e.usd), 0);
+                  const wagesTotal = g.entries.filter((e) => e.cost_section === 'wage').reduce((s, e) => s + Number(e.usd), 0);
+                  if (costsTotal > 0) catMap['360 Cell costs'] = costsTotal;
+                  if (wagesTotal > 0) catMap['Wages'] = wagesTotal;
                   const catData = Object.entries(catMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
                   return (
                     <div key={g.month} style={{ border: '1px solid var(--paper-line)', borderRadius: 4, overflow: 'hidden' }}>
