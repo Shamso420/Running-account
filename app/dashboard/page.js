@@ -1047,14 +1047,16 @@ export default function Dashboard() {
   const reportStats = useMemo(() => {
     const start = reportStartDate;
     const end = reportEndDate < reportStartDate ? reportStartDate : reportEndDate;
+    const saleEntryIds = new Set(entries.filter((e) => e.type === 'sale' && e.product).map((e) => e.id));
     const periodSales = entries.filter((e) => e.type === 'sale' && e.entry_date >= start && e.entry_date <= end && e.product);
-    const periodPayments = salePayments.filter((p) => p.payment_date >= start && p.payment_date <= end);
+    const periodPayments = salePayments.filter((p) => p.payment_date >= start && p.payment_date <= end && saleEntryIds.has(p.entry_id));
     return computeSaleStats(periodSales, periodPayments);
   }, [entries, salePayments, reportStartDate, reportEndDate]);
 
   const monthlyStats = useMemo(() => {
+    const saleEntryIds = new Set(entries.filter((e) => e.type === 'sale' && e.product).map((e) => e.id));
     const monthSales = entries.filter((e) => e.type === 'sale' && e.entry_date.slice(0, 7) === monthlyMonth && e.product);
-    const monthPayments = salePayments.filter((p) => p.payment_date.slice(0, 7) === monthlyMonth);
+    const monthPayments = salePayments.filter((p) => p.payment_date.slice(0, 7) === monthlyMonth && saleEntryIds.has(p.entry_id));
     return computeSaleStats(monthSales, monthPayments);
   }, [entries, salePayments, monthlyMonth]);
 
