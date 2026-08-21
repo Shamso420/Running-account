@@ -263,6 +263,7 @@ export default function Dashboard() {
   const [sellingEntry, setSellingEntry] = useState(null);
   const [invoiceEntries, setInvoiceEntries] = useState([]);
   const [invoiceAddId, setInvoiceAddId] = useState('');
+  const [invoiceExcludedPaymentIds, setInvoiceExcludedPaymentIds] = useState(new Set());
   const [sellForm, setSellForm] = useState({ amount: '', currency: 'USD', date: new Date().toISOString().slice(0, 10), soldTo: '' });
   const [sellError, setSellError] = useState('');
   const [selling, setSelling] = useState(false);
@@ -593,6 +594,7 @@ export default function Dashboard() {
       setInvoiceEntries([entry]);
     }
     setInvoiceAddId('');
+    setInvoiceExcludedPaymentIds(new Set());
   };
 
   const addInvoiceItem = (id) => {
@@ -603,6 +605,14 @@ export default function Dashboard() {
 
   const removeInvoiceItem = (id) => {
     setInvoiceEntries((prev) => prev.filter((e) => e.id !== id));
+  };
+
+  const toggleInvoicePayment = (id) => {
+    setInvoiceExcludedPaymentIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
   };
 
   const openSell = (entry) => {
@@ -2366,6 +2376,13 @@ export default function Dashboard() {
                   ? entries.filter((e) => e.type === 'sale' && e.product && !invoiceEntries.some((ie) => ie.id === e.id))
                     .sort((a, b) => b.entry_date.localeCompare(a.entry_date))
                   : [];
+                const invoicePayments = salePayments
+                  .filter((p) => invoiceEntries.some((e) => e.id === p.entry_id))
+                  .sort((a, b) => a.payment_date.localeCompare(b.payment_date));
+                const amountPaid = invoicePayments
+                  .filter((p) => !invoiceExcludedPaymentIds.has(p.id))
+                  .reduce((s, p) => s + Number(p.usd), 0);
+                const balanceDue = Math.max(0, combinedTotal - amountPaid);
                 return (
                   <>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', border: '1px solid #c7c7c7', marginTop: 18 }}>
@@ -2427,6 +2444,31 @@ export default function Dashboard() {
                       </div>
                     )}
 
+                    {invoicePayments.length > 0 && (
+                      <div style={{ marginTop: 22 }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, color: '#1c6b52' }}>PAYMENTS RECEIVED</div>
+                        <table style={{ width: '100%', marginTop: 8, borderCollapse: 'collapse' }}>
+                          <tbody>
+                            {invoicePayments.map((p) => {
+                              const excluded = invoiceExcludedPaymentIds.has(p.id);
+                              return (
+                                <tr key={p.id} className={excluded ? 'no-print' : undefined} style={excluded ? { opacity: 0.45 } : undefined}>
+                                  <td style={{ padding: '4px 0', fontSize: 12, color: '#12202b' }}>{invoiceDateStr(p.payment_date)}</td>
+                                  <td style={{ padding: '4px 0', fontSize: 12, color: '#12202b' }}>{p.payment_method || '—'}</td>
+                                  <td style={{ padding: '4px 0', fontSize: 12, color: '#12202b', textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(Number(p.usd))}</td>
+                                  <td className="no-print" style={{ padding: '4px 0 4px 10px', textAlign: 'right' }}>
+                                    <button onClick={() => toggleInvoicePayment(p.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: excluded ? 11 : 16, lineHeight: 1, padding: 4, cursor: 'pointer' }}>
+                                      {excluded ? 'Show' : '×'}
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 26 }}>
                       <div style={{ width: 220 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 13 }}>
@@ -2438,6 +2480,16 @@ export default function Dashboard() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: 15, fontWeight: 700, borderTop: '1px solid #12202b', marginTop: 4 }}>
                           <span>Total</span><span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(combinedTotal)}</span>
                         </div>
+                        {amountPaid > 0.001 && (
+                          <>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 13, color: 'var(--green)' }}>
+                              <span>Amount paid</span><span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>-{fmtUSD(amountPaid)}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: 15, fontWeight: 700, borderTop: '1px solid #12202b', marginTop: 4, color: balanceDue > 0.001 ? 'var(--coral)' : 'var(--green)' }}>
+                              <span>Balance due</span><span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(balanceDue)}</span>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   </>
