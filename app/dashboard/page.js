@@ -261,7 +261,8 @@ export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedMonth, setExpandedMonth] = useState(null);
   const [sellingEntry, setSellingEntry] = useState(null);
-  const [invoiceEntry, setInvoiceEntry] = useState(null);
+  const [invoiceEntries, setInvoiceEntries] = useState([]);
+  const [invoiceAddId, setInvoiceAddId] = useState('');
   const [sellForm, setSellForm] = useState({ amount: '', currency: 'USD', date: new Date().toISOString().slice(0, 10), soldTo: '' });
   const [sellError, setSellError] = useState('');
   const [selling, setSelling] = useState(false);
@@ -579,6 +580,29 @@ export default function Dashboard() {
       if (paymentRow) setSalePayments((prev) => [paymentRow, ...prev]);
     }
     setForm((f) => ({ ...emptyForm(), type: f.type, currency: f.currency }));
+  };
+
+  const openInvoice = (entry) => {
+    if (entry.type === 'sale' && entry.product) {
+      const sameGroup = entries.filter((e) =>
+        e.type === 'sale' && e.product && e.id !== entry.id &&
+        e.where_text === entry.where_text && e.entry_date === entry.entry_date
+      );
+      setInvoiceEntries([entry, ...sameGroup]);
+    } else {
+      setInvoiceEntries([entry]);
+    }
+    setInvoiceAddId('');
+  };
+
+  const addInvoiceItem = (id) => {
+    const match = entries.find((e) => e.id === id);
+    if (match) setInvoiceEntries((prev) => (prev.some((e) => e.id === id) ? prev : [...prev, match]));
+    setInvoiceAddId('');
+  };
+
+  const removeInvoiceItem = (id) => {
+    setInvoiceEntries((prev) => prev.filter((e) => e.id !== id));
   };
 
   const openSell = (entry) => {
@@ -1672,7 +1696,7 @@ export default function Dashboard() {
                                       <td style={{ color: 'var(--slate)' }}>{e.notes || '—'}</td>
                                       <td>
                                         <span style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                                          <button onClick={() => setInvoiceEntry(e)} style={{ background: 'none', border: '1px solid var(--blue)', color: 'var(--blue)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Invoice</button>
+                                          <button onClick={() => openInvoice(e)} style={{ background: 'none', border: '1px solid var(--blue)', color: 'var(--blue)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Invoice</button>
                                           {canAdd && isActiveAsset && (
                                             <button onClick={() => openSell(e)} style={{ background: 'none', border: '1px solid var(--gold)', color: 'var(--gold)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Sell</button>
                                           )}
@@ -2251,7 +2275,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {invoiceEntry && (
+      {invoiceEntries.length > 0 && (
         <div className="invoice-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(28,43,57,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, padding: 20 }}>
           <style>{`
             @media print {
@@ -2293,89 +2317,135 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: 48, marginTop: 22 }}>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: '#12202b' }}>DATE</div>
-                  <div style={{ fontSize: 14, color: '#12202b', marginTop: 2 }}>{invoiceDateStr(invoiceEntry.entry_date)}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: '#12202b' }}>INVOICE NO</div>
-                  <div style={{ fontSize: 14, color: '#12202b', marginTop: 2 }}>{invoiceNumber(invoiceEntry)}</div>
-                </div>
-              </div>
+              {(() => {
+                const primary = invoiceEntries[0];
+                return (
+                  <>
+                    <div style={{ display: 'flex', gap: 48, marginTop: 22 }}>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: '#12202b' }}>DATE</div>
+                        <div style={{ fontSize: 14, color: '#12202b', marginTop: 2 }}>{invoiceDateStr(primary.entry_date)}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: '#12202b' }}>INVOICE NO</div>
+                        <div style={{ fontSize: 14, color: '#12202b', marginTop: 2 }}>{invoiceNumber(primary)}</div>
+                      </div>
+                    </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 20 }}>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: '#12202b' }}>Bought from:</div>
-                  <div style={{ fontSize: 13, color: '#12202b', marginTop: 2 }}>
-                    {(invoiceEntry.type === 'sale' || invoiceEntry.type === 'investment')
-                      ? (invoiceEntry.supplier_text || '—')
-                      : (BOUGHT_FROM_TYPES.includes(invoiceEntry.type) || (invoiceEntry.type === 'debt' && invoiceEntry.debt_direction === 'i_owe')) ? (invoiceEntry.where_text || '—') : ''}
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: '#12202b' }}>Sold to:</div>
-                  <div style={{ fontSize: 13, color: '#12202b', marginTop: 2 }}>
-                    {invoiceEntry.type === 'investment'
-                      ? (invoiceEntry.status === 'sold' ? (invoiceEntry.where_text || '—') : '')
-                      : (!BOUGHT_FROM_TYPES.includes(invoiceEntry.type) && !(invoiceEntry.type === 'debt' && invoiceEntry.debt_direction === 'i_owe')) ? (invoiceEntry.where_text || '—') : ''}
-                  </div>
-                </div>
-              </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 20 }}>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: '#12202b' }}>Bought from:</div>
+                        <div style={{ fontSize: 13, color: '#12202b', marginTop: 2 }}>
+                          {(primary.type === 'sale' || primary.type === 'investment')
+                            ? (primary.supplier_text || '—')
+                            : (BOUGHT_FROM_TYPES.includes(primary.type) || (primary.type === 'debt' && primary.debt_direction === 'i_owe')) ? (primary.where_text || '—') : ''}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: '#12202b' }}>Sold to:</div>
+                        <div style={{ fontSize: 13, color: '#12202b', marginTop: 2 }}>
+                          {primary.type === 'investment'
+                            ? (primary.status === 'sold' ? (primary.where_text || '—') : '')
+                            : (!BOUGHT_FROM_TYPES.includes(primary.type) && !(primary.type === 'debt' && primary.debt_direction === 'i_owe')) ? (primary.where_text || '—') : ''}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
 
             {/* Details */}
             <div style={{ padding: '10px 36px 30px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', border: '1px solid #c7c7c7', marginTop: 18 }}>
-                <div style={{ padding: '10px 12px', borderRight: '1px solid #c7c7c7' }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: '#12202b' }}>TYPE</div>
-                  <div style={{ fontSize: 13, marginTop: 2 }}>{TYPES.find((t) => t.key === invoiceEntry.type)?.label}</div>
-                </div>
-                <div style={{ padding: '10px 12px', borderRight: '1px solid #c7c7c7' }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: '#12202b' }}>CATEGORY</div>
-                  <div style={{ fontSize: 13, marginTop: 2 }}>{invoiceEntry.category}</div>
-                </div>
-                <div style={{ padding: '10px 12px' }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: '#12202b' }}>DUE DATE</div>
-                  <div style={{ fontSize: 13, marginTop: 2 }}>{invoiceDateStr(invoiceEntry.entry_date)}</div>
-                </div>
-              </div>
+              {(() => {
+                const primary = invoiceEntries[0];
+                const isSaleInvoice = primary.type === 'sale' && !!primary.product;
+                const multiItem = isSaleInvoice && invoiceEntries.length > 1;
+                const combinedTotal = invoiceEntries.reduce((s, e) => s + invoiceAmountUsd(e), 0);
+                const addCandidates = isSaleInvoice
+                  ? entries.filter((e) => e.type === 'sale' && e.product && !invoiceEntries.some((ie) => ie.id === e.id))
+                    .sort((a, b) => b.entry_date.localeCompare(a.entry_date))
+                  : [];
+                return (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', border: '1px solid #c7c7c7', marginTop: 18 }}>
+                      <div style={{ padding: '10px 12px', borderRight: '1px solid #c7c7c7' }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, color: '#12202b' }}>TYPE</div>
+                        <div style={{ fontSize: 13, marginTop: 2 }}>{multiItem ? 'Sale (multiple items)' : TYPES.find((t) => t.key === primary.type)?.label}</div>
+                      </div>
+                      <div style={{ padding: '10px 12px', borderRight: '1px solid #c7c7c7' }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, color: '#12202b' }}>CATEGORY</div>
+                        <div style={{ fontSize: 13, marginTop: 2 }}>{multiItem ? `${invoiceEntries.length} items` : primary.category}</div>
+                      </div>
+                      <div style={{ padding: '10px 12px' }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, color: '#12202b' }}>DUE DATE</div>
+                        <div style={{ fontSize: 13, marginTop: 2 }}>{invoiceDateStr(primary.entry_date)}</div>
+                      </div>
+                    </div>
 
-              <table style={{ width: '100%', marginTop: 26, borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: '2px solid #12202b' }}>
-                    <th style={{ textAlign: 'left', fontSize: 11, fontWeight: 800, color: '#1c6b52', padding: '0 0 8px' }}>SERIAL NUMBER</th>
-                    <th style={{ textAlign: 'left', fontSize: 11, fontWeight: 800, color: '#1c6b52', padding: '0 0 8px' }}>DESCRIPTION</th>
-                    <th style={{ textAlign: 'right', fontSize: 11, fontWeight: 800, color: '#1c6b52', padding: '0 0 8px' }}>UNIT PRICE</th>
-                    <th style={{ textAlign: 'right', fontSize: 11, fontWeight: 800, color: '#1c6b52', padding: '0 0 8px' }}>LINE TOTAL</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b' }}>{invoiceEntry.id.slice(0, 8).toUpperCase()}</td>
-                    <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b' }}>{invoiceEntry.category}{invoiceEntry.notes ? ` — ${invoiceEntry.notes}` : ''}</td>
-                    <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b', textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(invoiceAmountUsd(invoiceEntry))}</td>
-                    <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b', textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(invoiceAmountUsd(invoiceEntry))}</td>
-                  </tr>
-                </tbody>
-              </table>
+                    <table style={{ width: '100%', marginTop: 26, borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '2px solid #12202b' }}>
+                          <th style={{ textAlign: 'left', fontSize: 11, fontWeight: 800, color: '#1c6b52', padding: '0 0 8px' }}>SERIAL NUMBER</th>
+                          <th style={{ textAlign: 'left', fontSize: 11, fontWeight: 800, color: '#1c6b52', padding: '0 0 8px' }}>DESCRIPTION</th>
+                          <th style={{ textAlign: 'right', fontSize: 11, fontWeight: 800, color: '#1c6b52', padding: '0 0 8px' }}>UNIT PRICE</th>
+                          <th style={{ textAlign: 'right', fontSize: 11, fontWeight: 800, color: '#1c6b52', padding: '0 0 8px' }}>LINE TOTAL</th>
+                          {invoiceEntries.length > 1 && <th className="no-print" style={{ padding: '0 0 8px' }}></th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {invoiceEntries.map((e) => (
+                          <tr key={e.id}>
+                            <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b' }}>{e.id.slice(0, 8).toUpperCase()}</td>
+                            <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b' }}>{isSaleInvoice && e.product ? e.product : e.category}{e.notes ? ` — ${e.notes}` : ''}</td>
+                            <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b', textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(invoiceAmountUsd(e))}</td>
+                            <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b', textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(invoiceAmountUsd(e))}</td>
+                            {invoiceEntries.length > 1 && (
+                              <td className="no-print" style={{ padding: '10px 0 10px 10px', textAlign: 'right' }}>
+                                <button onClick={() => removeInvoiceItem(e.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 16, lineHeight: 1, padding: 4, cursor: 'pointer' }}>×</button>
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 26 }}>
-                <div style={{ width: 220 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 13 }}>
-                    <span>Subtotal</span><span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(invoiceAmountUsd(invoiceEntry))}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 13 }}>
-                    <span>Sales Tax</span><span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(0)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: 15, fontWeight: 700, borderTop: '1px solid #12202b', marginTop: 4 }}>
-                    <span>Total</span><span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(invoiceAmountUsd(invoiceEntry))}</span>
-                  </div>
-                </div>
-              </div>
+                    {isSaleInvoice && addCandidates.length > 0 && (
+                      <div className="no-print" style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'center' }}>
+                        <select value={invoiceAddId} onChange={(e) => setInvoiceAddId(e.target.value)} style={{ flex: 1, fontSize: 13 }}>
+                          <option value="">+ Add another item…</option>
+                          {addCandidates.map((e) => (
+                            <option key={e.id} value={e.id}>{e.product} — {e.where_text || 'No customer'} — {e.entry_date} — {fmtUSD(invoiceAmountUsd(e))}</option>
+                          ))}
+                        </select>
+                        <button type="button" onClick={() => invoiceAddId && addInvoiceItem(invoiceAddId)} disabled={!invoiceAddId} style={{
+                          padding: '8px 14px', border: '1px solid var(--paper-line)', borderRadius: 4,
+                          background: 'transparent', color: 'var(--ink)', fontWeight: 600, fontSize: 13, opacity: invoiceAddId ? 1 : 0.5,
+                        }}>
+                          Add
+                        </button>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 26 }}>
+                      <div style={{ width: 220 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 13 }}>
+                          <span>Subtotal</span><span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(combinedTotal)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 13 }}>
+                          <span>Sales Tax</span><span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(0)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: 15, fontWeight: 700, borderTop: '1px solid #12202b', marginTop: 4 }}>
+                          <span>Total</span><span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(combinedTotal)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
 
               <div className="no-print" style={{ display: 'flex', gap: 10, marginTop: 30 }}>
-                <button onClick={() => setInvoiceEntry(null)} style={{ flex: 1, padding: '11px 16px', border: '1px solid var(--paper-line)', borderRadius: 4, background: 'transparent', color: 'var(--slate)', fontWeight: 600 }}>
+                <button onClick={() => setInvoiceEntries([])} style={{ flex: 1, padding: '11px 16px', border: '1px solid var(--paper-line)', borderRadius: 4, background: 'transparent', color: 'var(--slate)', fontWeight: 600 }}>
                   Close
                 </button>
                 <button onClick={() => window.print()} style={{ flex: 1, padding: '11px 16px', border: 'none', borderRadius: 4, background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600 }}>
