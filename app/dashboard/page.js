@@ -27,6 +27,8 @@ const emptyForm = () => ({
   supplier: '',
   paymentMethod: 'Cash',
   quantity: '1',
+  imei: '',
+  serialNumber: '',
 });
 
 function saleProfitUsd(e) {
@@ -466,6 +468,8 @@ export default function Dashboard() {
       supplier: entry.supplier_text || '',
       paymentMethod: entry.payment_method || 'Cash',
       quantity: entry.quantity != null ? String(entry.quantity) : '1',
+      imei: entry.imei || '',
+      serialNumber: entry.serial_number || '',
     });
     setEditingEntryId(entry.id);
     setFormError('');
@@ -501,7 +505,7 @@ export default function Dashboard() {
           supplier_text: form.supplier.trim(), payment_method: form.paymentMethod, quantity: saleQty,
         };
       } else if (form.type === 'investment') {
-        costFields = { supplier_text: form.supplier.trim() };
+        costFields = { supplier_text: form.supplier.trim(), imei: form.imei.trim(), serial_number: form.serialNumber.trim() };
       }
       const { data, error } = await supabase
         .from('entries')
@@ -543,7 +547,7 @@ export default function Dashboard() {
         received_usd: initialPaymentUsdLbp.usd, supplier_text: form.supplier.trim(), payment_method: form.paymentMethod, quantity: saleQty,
       };
     } else if (form.type === 'investment') {
-      costFields = { supplier_text: form.supplier.trim() };
+      costFields = { supplier_text: form.supplier.trim(), imei: form.imei.trim(), serial_number: form.serialNumber.trim() };
     }
     const { data, error } = await supabase
       .from('entries')
@@ -1360,7 +1364,7 @@ export default function Dashboard() {
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {TYPES.map((t) => (
                   <button type="button" key={t.key} disabled={!!editingEntryId}
-                    onClick={() => setForm((f) => ({ ...f, type: t.key, category: '', product: '', cost: '', receivedNow: '', supplier: '', paymentMethod: 'Cash', quantity: '1' }))} style={{
+                    onClick={() => setForm((f) => ({ ...f, type: t.key, category: '', product: '', cost: '', receivedNow: '', supplier: '', paymentMethod: 'Cash', quantity: '1', imei: '', serialNumber: '' }))} style={{
                     padding: '8px 14px', borderRadius: 20, cursor: editingEntryId ? 'default' : 'pointer',
                     border: `1.5px solid ${form.type === t.key ? t.color : 'var(--paper-line)'}`,
                     background: form.type === t.key ? t.color + '1a' : 'transparent',
@@ -1467,6 +1471,21 @@ export default function Dashboard() {
                   <input placeholder="e.g. Karim" value={form.where}
                     onChange={(e) => setForm((f) => ({ ...f, where: e.target.value }))} style={{ marginTop: 6 }} />
                 </label>
+              )}
+
+              {form.type === 'investment' && (
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <label style={{ flex: 1, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                    IMEI (optional)
+                    <input placeholder="e.g. 356938035643809" value={form.imei}
+                      onChange={(e) => setForm((f) => ({ ...f, imei: e.target.value }))} style={{ marginTop: 6 }} />
+                  </label>
+                  <label style={{ flex: 1, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                    Serial number (optional)
+                    <input placeholder="e.g. SN12345678" value={form.serialNumber}
+                      onChange={(e) => setForm((f) => ({ ...f, serialNumber: e.target.value }))} style={{ marginTop: 6 }} />
+                  </label>
+                </div>
               )}
 
               {form.type !== 'investment' && (
@@ -1703,6 +1722,13 @@ export default function Dashboard() {
                                           <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 2 }}>
                                             {e.supplier_text && <>Bought from {e.supplier_text}</>}
                                             {isSoldAsset && <>{e.supplier_text && ' · '}sold to {e.where_text || '—'}</>}
+                                          </div>
+                                        )}
+                                        {e.type === 'investment' && (e.imei || e.serial_number) && (
+                                          <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 2 }}>
+                                            {e.imei && <>IMEI {e.imei}</>}
+                                            {e.imei && e.serial_number && ' · '}
+                                            {e.serial_number && <>S/N {e.serial_number}</>}
                                           </div>
                                         )}
                                         {e.type === 'debt' && (
@@ -2435,8 +2461,12 @@ export default function Dashboard() {
                       <tbody>
                         {invoiceEntries.map((e) => (
                           <tr key={e.id}>
-                            <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b' }}>{e.id.slice(0, 8).toUpperCase()}</td>
-                            <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b' }}>{isSaleInvoice && e.product ? e.product : e.category}{e.notes ? ` — ${e.notes}` : ''}</td>
+                            <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b' }}>{e.type === 'investment' && e.serial_number ? e.serial_number : e.id.slice(0, 8).toUpperCase()}</td>
+                            <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b' }}>
+                              {isSaleInvoice && e.product ? e.product : e.category}
+                              {e.type === 'investment' && e.imei ? ` (IMEI ${e.imei})` : ''}
+                              {e.notes ? ` — ${e.notes}` : ''}
+                            </td>
                             <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b', textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(invoiceAmountUsd(e))}</td>
                             <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b', textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(invoiceAmountUsd(e))}</td>
                             {invoiceEntries.length > 1 && (
