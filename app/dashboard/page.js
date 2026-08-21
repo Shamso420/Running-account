@@ -38,6 +38,12 @@ function invoiceAmountUsd(e) {
   return Number(e.usd);
 }
 
+function daysBetween(dateStrA, dateStrB) {
+  const a = new Date(dateStrA + 'T00:00:00').getTime();
+  const b = new Date(dateStrB + 'T00:00:00').getTime();
+  return Math.abs(a - b) / 86400000;
+}
+
 function isDebtSection(e, section) {
   return section === 'partner' ? e.debt_section === 'partner' : e.debt_section !== 'partner';
 }
@@ -263,6 +269,7 @@ export default function Dashboard() {
   const [sellingEntry, setSellingEntry] = useState(null);
   const [invoiceEntries, setInvoiceEntries] = useState([]);
   const [invoiceAddId, setInvoiceAddId] = useState('');
+  const [invoiceGroupDays, setInvoiceGroupDays] = useState(0);
   const [invoiceExcludedPaymentIds, setInvoiceExcludedPaymentIds] = useState(new Set());
   const [sellForm, setSellForm] = useState({ amount: '', currency: 'USD', date: new Date().toISOString().slice(0, 10), soldTo: '' });
   const [sellError, setSellError] = useState('');
@@ -587,14 +594,29 @@ export default function Dashboard() {
     if (entry.type === 'sale' && entry.product) {
       const sameGroup = entries.filter((e) =>
         e.type === 'sale' && e.product && e.id !== entry.id &&
-        e.where_text === entry.where_text && e.entry_date === entry.entry_date
+        e.where_text === entry.where_text && daysBetween(e.entry_date, entry.entry_date) <= 0
       );
       setInvoiceEntries([entry, ...sameGroup]);
     } else {
       setInvoiceEntries([entry]);
     }
     setInvoiceAddId('');
+    setInvoiceGroupDays(0);
     setInvoiceExcludedPaymentIds(new Set());
+  };
+
+  const expandInvoiceGroup = (days) => {
+    setInvoiceGroupDays(days);
+    setInvoiceEntries((prev) => {
+      const primary = prev[0];
+      if (!primary || primary.type !== 'sale' || !primary.product) return prev;
+      const matches = entries.filter((e) =>
+        e.type === 'sale' && e.product && e.where_text === primary.where_text &&
+        daysBetween(e.entry_date, primary.entry_date) <= days &&
+        !prev.some((ie) => ie.id === e.id)
+      );
+      return matches.length > 0 ? [...prev, ...matches] : prev;
+    });
   };
 
   const addInvoiceItem = (id) => {
@@ -2427,8 +2449,21 @@ export default function Dashboard() {
                       </tbody>
                     </table>
 
+                    {isSaleInvoice && (
+                      <div className="no-print" style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'center', fontSize: 13 }}>
+                        <span style={{ color: 'var(--slate)' }}>Include same-customer items within</span>
+                        <select value={invoiceGroupDays} onChange={(e) => expandInvoiceGroup(Number(e.target.value))} style={{ fontSize: 13 }}>
+                          <option value={0}>Same day</option>
+                          <option value={3}>3 days</option>
+                          <option value={7}>7 days</option>
+                          <option value={14}>14 days</option>
+                          <option value={30}>30 days</option>
+                        </select>
+                      </div>
+                    )}
+
                     {isSaleInvoice && addCandidates.length > 0 && (
-                      <div className="no-print" style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'center' }}>
+                      <div className="no-print" style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
                         <select value={invoiceAddId} onChange={(e) => setInvoiceAddId(e.target.value)} style={{ flex: 1, fontSize: 13 }}>
                           <option value="">+ Add another item…</option>
                           {addCandidates.map((e) => (
