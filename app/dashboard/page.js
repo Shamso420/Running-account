@@ -38,6 +38,40 @@ function invoiceAmountUsd(e) {
   return Number(e.usd);
 }
 
+function isDebtSection(e, section) {
+  return section === 'partner' ? e.debt_section === 'partner' : e.debt_section !== 'partner';
+}
+
+function computeDebtActivity(entries, salePayments, start, end, section) {
+  const periodDebts = entries.filter((e) => e.type === 'debt' && isDebtSection(e, section) && e.entry_date >= start && e.entry_date <= end);
+  const newOwedToMe = periodDebts.filter((e) => e.debt_direction !== 'i_owe').reduce((s, e) => s + Number(e.usd), 0);
+  const newIOwe = periodDebts.filter((e) => e.debt_direction === 'i_owe').reduce((s, e) => s + Number(e.usd), 0);
+
+  const debtById = {};
+  entries.forEach((e) => { if (e.type === 'debt' && isDebtSection(e, section)) debtById[e.id] = e; });
+  const periodPayments = salePayments.filter((p) => p.payment_date >= start && p.payment_date <= end && debtById[p.entry_id]);
+  const collectedOwedToMe = periodPayments
+    .filter((p) => debtById[p.entry_id].debt_direction !== 'i_owe')
+    .reduce((s, p) => s + Number(p.usd), 0);
+  const paidIOwe = periodPayments
+    .filter((p) => debtById[p.entry_id].debt_direction === 'i_owe')
+    .reduce((s, p) => s + Number(p.usd), 0);
+
+  return { transactions: periodDebts.length, newOwedToMe, newIOwe, collectedOwedToMe, paidIOwe };
+}
+
+function computeCurrentDebtTotals(entries, section) {
+  let owedToMe = 0;
+  let iOwe = 0;
+  entries.forEach((e) => {
+    if (e.type !== 'debt' || e.status === 'settled' || !isDebtSection(e, section)) return;
+    const balance = Number(e.usd) - Number(e.received_usd || 0);
+    if (e.debt_direction === 'i_owe') iOwe += balance;
+    else owedToMe += balance;
+  });
+  return { owedToMe, iOwe, net: owedToMe - iOwe };
+}
+
 function computeSaleStats(saleEntries, payments) {
   const transactions = saleEntries.length;
   const revenue = saleEntries.reduce((s, e) => s + Number(e.usd), 0);
@@ -193,6 +227,11 @@ export default function Dashboard() {
   const [savingDebt, setSavingDebt] = useState(false);
   const [debtStartDate, setDebtStartDate] = useState(new Date().toISOString().slice(0, 10));
   const [debtEndDate, setDebtEndDate] = useState(new Date().toISOString().slice(0, 10));
+  const [partnerDebtForm, setPartnerDebtForm] = useState({ date: new Date().toISOString().slice(0, 10), who: '', direction: 'owed_to_me', category: '', amount: '', currency: 'LBP', notes: '' });
+  const [partnerDebtFormError, setPartnerDebtFormError] = useState('');
+  const [savingPartnerDebt, setSavingPartnerDebt] = useState(false);
+  const [partnerDebtStartDate, setPartnerDebtStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [partnerDebtEndDate, setPartnerDebtEndDate] = useState(new Date().toISOString().slice(0, 10));
   const [inventoryItems, setInventoryItems] = useState([]);
   const [invForm, setInvForm] = useState({ productName: '', quantity: '', notes: '' });
   const [invError, setInvError] = useState('');
@@ -760,33 +799,34 @@ export default function Dashboard() {
     return {};
   };
 
-  const addDebtEntry = async () => {
-    const amt = parseFloat(debtForm.amount);
-    if (!amt || amt <= 0) { setDebtFormError('Enter an amount greater than zero.'); return; }
-    if (!debtForm.who.trim()) { setDebtFormError('Enter who this debt is with.'); return; }
-    setDebtFormError('');
-    setSavingDebt(true);
-    const { usd, lbp } = toUsdLbp(amt, debtForm.currency);
+  const addDebtEntry = async (section, form, setForm, setFormError, setSaving) => {
+    const amt = parseFloat(form.amount);
+    if (!amt || amt <= 0) { setFormError('Enter an amount greater than zero.'); return; }
+    if (!form.who.trim()) { setFormError(section === 'partner' ? 'Enter which partner this debt is with.' : 'Enter who this debt is with.'); return; }
+    setFormError('');
+    setSaving(true);
+    const { usd, lbp } = toUsdLbp(amt, form.currency);
     const { data, error } = await supabase
       .from('entries')
       .insert({
         user_id: session.user.id,
-        entry_date: debtForm.date,
+        entry_date: form.date,
         type: 'debt',
-        category: debtForm.category.trim() || 'Other',
-        where_text: debtForm.who.trim(),
-        notes: debtForm.notes.trim(),
-        currency: debtForm.currency,
+        category: form.category.trim() || 'Other',
+        where_text: form.who.trim(),
+        notes: form.notes.trim(),
+        currency: form.currency,
         amount_raw: amt,
         usd, lbp,
-        debt_direction: debtForm.direction,
+        debt_direction: form.direction,
+        debt_section: section,
       })
       .select()
       .single();
-    setSavingDebt(false);
-    if (error) { setDebtFormError('Could not save: ' + error.message); return; }
+    setSaving(false);
+    if (error) { setFormError('Could not save: ' + error.message); return; }
     setAllEntries((prev) => [data, ...prev].sort((a, b) => b.entry_date.localeCompare(a.entry_date)));
-    setDebtForm((f) => ({ ...f, who: '', category: '', amount: '', notes: '' }));
+    setForm((f) => ({ ...f, who: '', category: '', amount: '', notes: '' }));
   };
 
   const findInventoryMatch = (productName) => {
@@ -1070,34 +1110,39 @@ export default function Dashboard() {
   );
 
   const openDebts = useMemo(
-    () => entries.filter((e) => e.type === 'debt' && e.status !== 'settled').sort((a, b) => b.entry_date.localeCompare(a.entry_date)),
+    () => entries.filter((e) => e.type === 'debt' && e.status !== 'settled' && isDebtSection(e, undefined)).sort((a, b) => b.entry_date.localeCompare(a.entry_date)),
     [entries]
   );
 
   const settledDebts = useMemo(
-    () => entries.filter((e) => e.type === 'debt' && e.status === 'settled').sort((a, b) => b.entry_date.localeCompare(a.entry_date)),
+    () => entries.filter((e) => e.type === 'debt' && e.status === 'settled' && isDebtSection(e, undefined)).sort((a, b) => b.entry_date.localeCompare(a.entry_date)),
+    [entries]
+  );
+
+  const openPartnerDebts = useMemo(
+    () => entries.filter((e) => e.type === 'debt' && e.status !== 'settled' && isDebtSection(e, 'partner')).sort((a, b) => b.entry_date.localeCompare(a.entry_date)),
+    [entries]
+  );
+
+  const settledPartnerDebts = useMemo(
+    () => entries.filter((e) => e.type === 'debt' && e.status === 'settled' && isDebtSection(e, 'partner')).sort((a, b) => b.entry_date.localeCompare(a.entry_date)),
     [entries]
   );
 
   const debtActivity = useMemo(() => {
     const start = debtStartDate;
     const end = debtEndDate < debtStartDate ? debtStartDate : debtEndDate;
-    const periodDebts = entries.filter((e) => e.type === 'debt' && e.entry_date >= start && e.entry_date <= end);
-    const newOwedToMe = periodDebts.filter((e) => e.debt_direction !== 'i_owe').reduce((s, e) => s + Number(e.usd), 0);
-    const newIOwe = periodDebts.filter((e) => e.debt_direction === 'i_owe').reduce((s, e) => s + Number(e.usd), 0);
-
-    const debtById = {};
-    entries.forEach((e) => { if (e.type === 'debt') debtById[e.id] = e; });
-    const periodPayments = salePayments.filter((p) => p.payment_date >= start && p.payment_date <= end && debtById[p.entry_id]);
-    const collectedOwedToMe = periodPayments
-      .filter((p) => debtById[p.entry_id].debt_direction !== 'i_owe')
-      .reduce((s, p) => s + Number(p.usd), 0);
-    const paidIOwe = periodPayments
-      .filter((p) => debtById[p.entry_id].debt_direction === 'i_owe')
-      .reduce((s, p) => s + Number(p.usd), 0);
-
-    return { transactions: periodDebts.length, newOwedToMe, newIOwe, collectedOwedToMe, paidIOwe };
+    return computeDebtActivity(entries, salePayments, start, end, undefined);
   }, [entries, salePayments, debtStartDate, debtEndDate]);
+
+  const partnerDebtActivity = useMemo(() => {
+    const start = partnerDebtStartDate;
+    const end = partnerDebtEndDate < partnerDebtStartDate ? partnerDebtStartDate : partnerDebtEndDate;
+    return computeDebtActivity(entries, salePayments, start, end, 'partner');
+  }, [entries, salePayments, partnerDebtStartDate, partnerDebtEndDate]);
+
+  const currentDebtTotals = useMemo(() => computeCurrentDebtTotals(entries, undefined), [entries]);
+  const currentPartnerDebtTotals = useMemo(() => computeCurrentDebtTotals(entries, 'partner'), [entries]);
 
   const goalCards = useMemo(() => {
     return goals.map((g) => {
@@ -1206,6 +1251,7 @@ export default function Dashboard() {
             { key: 'costs', label: '360 Cell Costs' },
             { key: 'wages', label: 'Wages' },
             { key: 'debts', label: 'Debts' },
+            { key: 'partnerDebts', label: '360 Debts' },
             { key: 'inventory', label: 'Inventory' },
             ...(plan === 'business' ? [{ key: 'goals', label: 'Goals' }] : []),
           ].map((t) => (
@@ -1792,177 +1838,29 @@ export default function Dashboard() {
         )}
 
         {tab === 'debts' && (
-          <div style={{ maxWidth: 900 }}>
-            <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
-              <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, maxWidth: 220 }}>
-                From
-                <input type="date" value={debtStartDate} onChange={(e) => setDebtStartDate(e.target.value)} style={{ marginTop: 6 }} />
-              </label>
-              <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, maxWidth: 220 }}>
-                To
-                <input type="date" value={debtEndDate} onChange={(e) => setDebtEndDate(e.target.value)} style={{ marginTop: 6 }} />
-              </label>
-            </div>
+          <DebtsSection
+            addPersonLabel="Who" addTitle="+ Add debt"
+            startDate={debtStartDate} endDate={debtEndDate} setStartDate={setDebtStartDate} setEndDate={setDebtEndDate}
+            activity={debtActivity} currentTotals={currentDebtTotals}
+            canAdd={canAdd} form={debtForm} setForm={setDebtForm} error={debtFormError} saving={savingDebt}
+            onSubmit={() => addDebtEntry(undefined, debtForm, setDebtForm, setDebtFormError, setSavingDebt)}
+            openDebts={openDebts} settledDebts={settledDebts}
+            canSettleDebt={canSettleDebt} onSettle={settleDebt} onIncreaseDebt={openIncreaseDebt} onRecordPayment={openRecordPayment}
+            canDeleteEntry={canDeleteEntry} onEdit={startEditEntry} confirmDeleteId={confirmDeleteId} setConfirmDeleteId={setConfirmDeleteId} onDelete={deleteEntry}
+          />
+        )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 20 }}>
-              <KpiCard label="New — owed to me" value={fmtUSD(debtActivity.newOwedToMe)} color="var(--green)" />
-              <KpiCard label="New — I owe" value={fmtUSD(debtActivity.newIOwe)} color="var(--coral)" />
-              <KpiCard label="Collected (owed to me)" value={fmtUSD(debtActivity.collectedOwedToMe)} color="var(--green)" />
-              <KpiCard label="Paid off (I owe)" value={fmtUSD(debtActivity.paidIOwe)} color="var(--coral)" />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 32 }}>
-              <KpiCard label="Currently owed to me" value={fmtUSD(totals.debtOwedToMe)} color="var(--green)" />
-              <KpiCard label="Currently I owe" value={fmtUSD(totals.debtIOwe)} color="var(--coral)" />
-              <KpiCard label="Net debt" value={fmtUSD(totals.netDebt)} color={totals.netDebt >= 0 ? 'var(--green)' : 'var(--coral)'} bold />
-            </div>
-
-            {canAdd && (
-              <ChartCard title="+ Add debt">
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
-                  <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
-                    Date
-                    <input type="date" value={debtForm.date} onChange={(e) => setDebtForm((f) => ({ ...f, date: e.target.value }))} style={{ marginTop: 6 }} />
-                  </label>
-                  <label style={{ flex: 1, minWidth: 160, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
-                    Who
-                    <input value={debtForm.who} onChange={(e) => setDebtForm((f) => ({ ...f, who: e.target.value }))} style={{ marginTop: 6 }} />
-                  </label>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {[
-                      { key: 'owed_to_me', label: 'Owed to me' },
-                      { key: 'i_owe', label: 'I owe' },
-                    ].map((d) => (
-                      <button type="button" key={d.key} onClick={() => setDebtForm((f) => ({ ...f, direction: d.key }))} style={{
-                        padding: '10px 12px', borderRadius: 4, cursor: 'pointer',
-                        border: `1.5px solid ${debtForm.direction === d.key ? '#8A6BA8' : 'var(--paper-line)'}`,
-                        background: debtForm.direction === d.key ? '#8A6BA81a' : 'transparent',
-                        color: debtForm.direction === d.key ? '#8A6BA8' : 'var(--slate)', fontWeight: 600, fontSize: 13,
-                      }}>
-                        {d.label}
-                      </button>
-                    ))}
-                  </div>
-                  <label style={{ minWidth: 140, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
-                    Category
-                    <input list="debt-cat-suggestions" value={debtForm.category} onChange={(e) => setDebtForm((f) => ({ ...f, category: e.target.value }))} style={{ marginTop: 6 }} />
-                    <datalist id="debt-cat-suggestions">
-                      {CATEGORY_SUGGESTIONS.debt.map((c) => <option key={c} value={c} />)}
-                    </datalist>
-                  </label>
-                  <label style={{ width: 120, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
-                    Amount
-                    <input type="number" step="any" min="0" placeholder="0" value={debtForm.amount} onChange={(e) => setDebtForm((f) => ({ ...f, amount: e.target.value }))} style={{ marginTop: 6 }} />
-                  </label>
-                  <label style={{ width: 100, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
-                    Currency
-                    <select value={debtForm.currency} onChange={(e) => setDebtForm((f) => ({ ...f, currency: e.target.value }))} style={{ marginTop: 6 }}>
-                      <option value="LBP">LBP</option>
-                      <option value="USD">USD</option>
-                    </select>
-                  </label>
-                  <label style={{ flex: 1, minWidth: 160, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
-                    Notes (optional)
-                    <input value={debtForm.notes} onChange={(e) => setDebtForm((f) => ({ ...f, notes: e.target.value }))} style={{ marginTop: 6 }} />
-                  </label>
-                  <button type="button" onClick={addDebtEntry} disabled={savingDebt} style={{
-                    padding: '10px 18px', border: 'none', borderRadius: 4,
-                    background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600, opacity: savingDebt ? 0.6 : 1,
-                  }}>
-                    {savingDebt ? 'Saving…' : 'Add'}
-                  </button>
-                </div>
-                {debtFormError && <div style={{ color: 'var(--coral)', fontSize: 13, marginTop: 10 }}>{debtFormError}</div>}
-              </ChartCard>
-            )}
-
-            <div style={{ marginTop: 24, overflow: 'auto' }}>
-              <h3 style={{ fontSize: 16, marginBottom: 12 }}>Open debts</h3>
-              {openDebts.length === 0 ? <NoData /> : (
-                <table>
-                  <thead>
-                    <tr>{['Date', 'Who', 'Direction', 'Category', 'Amount', 'Balance due', 'Status', ''].map((h) => <th key={h}>{h}</th>)}</tr>
-                  </thead>
-                  <tbody>
-                    {openDebts.map((e) => {
-                      const balanceDue = Number(e.usd) - Number(e.received_usd || 0);
-                      const status = debtCollectionStatus(e);
-                      const statusColor = status === 'Settled' ? 'var(--green)' : status === 'Partial' ? 'var(--gold)' : 'var(--coral)';
-                      return (
-                        <tr key={e.id}>
-                          <td>{e.entry_date}</td>
-                          <td>{e.where_text || '—'}</td>
-                          <td>{e.debt_direction === 'i_owe' ? 'I owe' : 'Owed to me'}</td>
-                          <td>{e.category}</td>
-                          <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(e.usd)}</td>
-                          <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(balanceDue)}</td>
-                          <td><span style={{ color: statusColor, fontWeight: 600 }}>{status}</span></td>
-                          <td>
-                            <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                              {canSettleDebt && (
-                                <button onClick={() => settleDebt(e)} style={{ background: 'none', border: '1px solid #8A6BA8', color: '#8A6BA8', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Settle</button>
-                              )}
-                              {canSettleDebt && (
-                                <button onClick={() => openIncreaseDebt(e)} style={{ background: 'none', border: '1px solid #8A6BA8', color: '#8A6BA8', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Add to debt</button>
-                              )}
-                              {canSettleDebt && balanceDue > 0.001 && (
-                                <button onClick={() => openRecordPayment(e)} style={{ background: 'none', border: '1px solid var(--blue)', color: 'var(--blue)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Record payment</button>
-                              )}
-                              {canDeleteEntry && (
-                                <button onClick={() => startEditEntry(e)} style={{ background: 'none', border: '1px solid var(--paper-line)', color: 'var(--ink)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Edit</button>
-                              )}
-                              {canDeleteEntry && (confirmDeleteId === e.id ? (
-                                <span style={{ display: 'flex', gap: 6 }}>
-                                  <button onClick={() => deleteEntry(e.id)} style={{ background: 'var(--coral)', color: '#fff', border: 'none', borderRadius: 3, padding: '3px 8px', fontSize: 11 }}>Delete</button>
-                                  <button onClick={() => setConfirmDeleteId(null)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
-                                </span>
-                              ) : (
-                                <button onClick={() => setConfirmDeleteId(e.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>Delete</button>
-                              ))}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-
-            <div style={{ marginTop: 40, overflow: 'auto' }}>
-              <h3 style={{ fontSize: 16, marginBottom: 12, color: 'var(--slate)' }}>Settled debts</h3>
-              {settledDebts.length === 0 ? <NoData /> : (
-                <table>
-                  <thead>
-                    <tr>{['Date', 'Who', 'Direction', 'Category', 'Amount', ''].map((h) => <th key={h}>{h}</th>)}</tr>
-                  </thead>
-                  <tbody>
-                    {settledDebts.map((e) => (
-                      <tr key={e.id} style={{ color: 'var(--slate)' }}>
-                        <td>{e.entry_date}</td>
-                        <td>{e.where_text || '—'}</td>
-                        <td>{e.debt_direction === 'i_owe' ? 'I owe' : 'Owed to me'}</td>
-                        <td>{e.category}</td>
-                        <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(e.usd)}</td>
-                        <td>
-                          <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                            {canDeleteEntry && (confirmDeleteId === e.id ? (
-                              <span style={{ display: 'flex', gap: 6 }}>
-                                <button onClick={() => deleteEntry(e.id)} style={{ background: 'var(--coral)', color: '#fff', border: 'none', borderRadius: 3, padding: '3px 8px', fontSize: 11 }}>Delete</button>
-                                <button onClick={() => setConfirmDeleteId(null)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
-                              </span>
-                            ) : (
-                              <button onClick={() => setConfirmDeleteId(e.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>Delete</button>
-                            ))}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
+        {tab === 'partnerDebts' && (
+          <DebtsSection
+            addPersonLabel="Partner" addTitle="+ Add partner debt"
+            startDate={partnerDebtStartDate} endDate={partnerDebtEndDate} setStartDate={setPartnerDebtStartDate} setEndDate={setPartnerDebtEndDate}
+            activity={partnerDebtActivity} currentTotals={currentPartnerDebtTotals}
+            canAdd={canAdd} form={partnerDebtForm} setForm={setPartnerDebtForm} error={partnerDebtFormError} saving={savingPartnerDebt}
+            onSubmit={() => addDebtEntry('partner', partnerDebtForm, setPartnerDebtForm, setPartnerDebtFormError, setSavingPartnerDebt)}
+            openDebts={openPartnerDebts} settledDebts={settledPartnerDebts}
+            canSettleDebt={canSettleDebt} onSettle={settleDebt} onIncreaseDebt={openIncreaseDebt} onRecordPayment={openRecordPayment}
+            canDeleteEntry={canDeleteEntry} onEdit={startEditEntry} confirmDeleteId={confirmDeleteId} setConfirmDeleteId={setConfirmDeleteId} onDelete={deleteEntry}
+          />
         )}
 
         {tab === 'inventory' && (
@@ -2669,6 +2567,190 @@ function SaleStatsPanel({ stats }) {
         )}
       </ChartCard>
     </>
+  );
+}
+
+function DebtsSection({
+  addPersonLabel, addTitle,
+  startDate, endDate, setStartDate, setEndDate,
+  activity, currentTotals,
+  canAdd, form, setForm, error, saving, onSubmit,
+  openDebts, settledDebts,
+  canSettleDebt, onSettle, onIncreaseDebt, onRecordPayment,
+  canDeleteEntry, onEdit, confirmDeleteId, setConfirmDeleteId, onDelete,
+}) {
+  return (
+    <div style={{ maxWidth: 900 }}>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+        <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, maxWidth: 220 }}>
+          From
+          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={{ marginTop: 6 }} />
+        </label>
+        <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, maxWidth: 220 }}>
+          To
+          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={{ marginTop: 6 }} />
+        </label>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 20 }}>
+        <KpiCard label="New — owed to me" value={fmtUSD(activity.newOwedToMe)} color="var(--green)" />
+        <KpiCard label="New — I owe" value={fmtUSD(activity.newIOwe)} color="var(--coral)" />
+        <KpiCard label="Collected (owed to me)" value={fmtUSD(activity.collectedOwedToMe)} color="var(--green)" />
+        <KpiCard label="Paid off (I owe)" value={fmtUSD(activity.paidIOwe)} color="var(--coral)" />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 32 }}>
+        <KpiCard label="Currently owed to me" value={fmtUSD(currentTotals.owedToMe)} color="var(--green)" />
+        <KpiCard label="Currently I owe" value={fmtUSD(currentTotals.iOwe)} color="var(--coral)" />
+        <KpiCard label="Net debt" value={fmtUSD(currentTotals.net)} color={currentTotals.net >= 0 ? 'var(--green)' : 'var(--coral)'} bold />
+      </div>
+
+      {canAdd && (
+        <ChartCard title={addTitle}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
+            <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+              Date
+              <input type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} style={{ marginTop: 6 }} />
+            </label>
+            <label style={{ flex: 1, minWidth: 160, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+              {addPersonLabel}
+              <input value={form.who} onChange={(e) => setForm((f) => ({ ...f, who: e.target.value }))} style={{ marginTop: 6 }} />
+            </label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {[
+                { key: 'owed_to_me', label: 'Owed to me' },
+                { key: 'i_owe', label: 'I owe' },
+              ].map((d) => (
+                <button type="button" key={d.key} onClick={() => setForm((f) => ({ ...f, direction: d.key }))} style={{
+                  padding: '10px 12px', borderRadius: 4, cursor: 'pointer',
+                  border: `1.5px solid ${form.direction === d.key ? '#8A6BA8' : 'var(--paper-line)'}`,
+                  background: form.direction === d.key ? '#8A6BA81a' : 'transparent',
+                  color: form.direction === d.key ? '#8A6BA8' : 'var(--slate)', fontWeight: 600, fontSize: 13,
+                }}>
+                  {d.label}
+                </button>
+              ))}
+            </div>
+            <label style={{ minWidth: 140, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+              Category
+              <input list="debt-cat-suggestions" value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} style={{ marginTop: 6 }} />
+              <datalist id="debt-cat-suggestions">
+                {CATEGORY_SUGGESTIONS.debt.map((c) => <option key={c} value={c} />)}
+              </datalist>
+            </label>
+            <label style={{ width: 120, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+              Amount
+              <input type="number" step="any" min="0" placeholder="0" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} style={{ marginTop: 6 }} />
+            </label>
+            <label style={{ width: 100, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+              Currency
+              <select value={form.currency} onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))} style={{ marginTop: 6 }}>
+                <option value="LBP">LBP</option>
+                <option value="USD">USD</option>
+              </select>
+            </label>
+            <label style={{ flex: 1, minWidth: 160, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+              Notes (optional)
+              <input value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} style={{ marginTop: 6 }} />
+            </label>
+            <button type="button" onClick={onSubmit} disabled={saving} style={{
+              padding: '10px 18px', border: 'none', borderRadius: 4,
+              background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600, opacity: saving ? 0.6 : 1,
+            }}>
+              {saving ? 'Saving…' : 'Add'}
+            </button>
+          </div>
+          {error && <div style={{ color: 'var(--coral)', fontSize: 13, marginTop: 10 }}>{error}</div>}
+        </ChartCard>
+      )}
+
+      <div style={{ marginTop: 24, overflow: 'auto' }}>
+        <h3 style={{ fontSize: 16, marginBottom: 12 }}>Open debts</h3>
+        {openDebts.length === 0 ? <NoData /> : (
+          <table>
+            <thead>
+              <tr>{['Date', 'Who', 'Direction', 'Category', 'Amount', 'Balance due', 'Status', ''].map((h) => <th key={h}>{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {openDebts.map((e) => {
+                const balanceDue = Number(e.usd) - Number(e.received_usd || 0);
+                const status = debtCollectionStatus(e);
+                const statusColor = status === 'Settled' ? 'var(--green)' : status === 'Partial' ? 'var(--gold)' : 'var(--coral)';
+                return (
+                  <tr key={e.id}>
+                    <td>{e.entry_date}</td>
+                    <td>{e.where_text || '—'}</td>
+                    <td>{e.debt_direction === 'i_owe' ? 'I owe' : 'Owed to me'}</td>
+                    <td>{e.category}</td>
+                    <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(e.usd)}</td>
+                    <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(balanceDue)}</td>
+                    <td><span style={{ color: statusColor, fontWeight: 600 }}>{status}</span></td>
+                    <td>
+                      <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        {canSettleDebt && (
+                          <button onClick={() => onSettle(e)} style={{ background: 'none', border: '1px solid #8A6BA8', color: '#8A6BA8', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Settle</button>
+                        )}
+                        {canSettleDebt && (
+                          <button onClick={() => onIncreaseDebt(e)} style={{ background: 'none', border: '1px solid #8A6BA8', color: '#8A6BA8', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Add to debt</button>
+                        )}
+                        {canSettleDebt && balanceDue > 0.001 && (
+                          <button onClick={() => onRecordPayment(e)} style={{ background: 'none', border: '1px solid var(--blue)', color: 'var(--blue)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Record payment</button>
+                        )}
+                        {canDeleteEntry && (
+                          <button onClick={() => onEdit(e)} style={{ background: 'none', border: '1px solid var(--paper-line)', color: 'var(--ink)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Edit</button>
+                        )}
+                        {canDeleteEntry && (confirmDeleteId === e.id ? (
+                          <span style={{ display: 'flex', gap: 6 }}>
+                            <button onClick={() => onDelete(e.id)} style={{ background: 'var(--coral)', color: '#fff', border: 'none', borderRadius: 3, padding: '3px 8px', fontSize: 11 }}>Delete</button>
+                            <button onClick={() => setConfirmDeleteId(null)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
+                          </span>
+                        ) : (
+                          <button onClick={() => setConfirmDeleteId(e.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>Delete</button>
+                        ))}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div style={{ marginTop: 40, overflow: 'auto' }}>
+        <h3 style={{ fontSize: 16, marginBottom: 12, color: 'var(--slate)' }}>Settled debts</h3>
+        {settledDebts.length === 0 ? <NoData /> : (
+          <table>
+            <thead>
+              <tr>{['Date', 'Who', 'Direction', 'Category', 'Amount', ''].map((h) => <th key={h}>{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {settledDebts.map((e) => (
+                <tr key={e.id} style={{ color: 'var(--slate)' }}>
+                  <td>{e.entry_date}</td>
+                  <td>{e.where_text || '—'}</td>
+                  <td>{e.debt_direction === 'i_owe' ? 'I owe' : 'Owed to me'}</td>
+                  <td>{e.category}</td>
+                  <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(e.usd)}</td>
+                  <td>
+                    <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      {canDeleteEntry && (confirmDeleteId === e.id ? (
+                        <span style={{ display: 'flex', gap: 6 }}>
+                          <button onClick={() => onDelete(e.id)} style={{ background: 'var(--coral)', color: '#fff', border: 'none', borderRadius: 3, padding: '3px 8px', fontSize: 11 }}>Delete</button>
+                          <button onClick={() => setConfirmDeleteId(null)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
+                        </span>
+                      ) : (
+                        <button onClick={() => setConfirmDeleteId(e.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>Delete</button>
+                      ))}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
   );
 }
 
