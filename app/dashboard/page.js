@@ -678,8 +678,16 @@ export default function Dashboard() {
     if (!amt || amt <= 0) { setPayError('Enter an amount greater than zero.'); return; }
     setPaying(true);
     setPayError('');
-    const { usd: paidUsd, lbp: paidLbp } = toUsdLbp(amt, payForm.currency);
-    const newReceivedUsd = Math.min(Number(payingEntry.received_usd || 0) + paidUsd, Number(payingEntry.usd));
+    const { usd: typedUsd } = toUsdLbp(amt, payForm.currency);
+    const previousReceivedUsd = Number(payingEntry.received_usd || 0);
+    const balanceDueUsd = Math.max(0, Number(payingEntry.usd) - previousReceivedUsd);
+    // Cap what actually gets logged to the remaining balance — a typo'd or
+    // deliberate overpayment shouldn't inflate the payment history / collected total
+    // beyond what the sale or debt was actually worth.
+    const appliedUsd = Math.min(typedUsd, balanceDueUsd);
+    const appliedRaw = payForm.currency === 'LBP' ? appliedUsd * RATE : appliedUsd;
+    const appliedLbp = appliedUsd * RATE;
+    const newReceivedUsd = previousReceivedUsd + appliedUsd;
     const updateFields = { received_usd: newReceivedUsd };
     if (payingEntry.type === 'debt' && newReceivedUsd >= Number(payingEntry.usd) - 0.001) {
       updateFields.status = 'settled';
@@ -697,10 +705,10 @@ export default function Dashboard() {
         user_id: session.user.id,
         entry_id: payingEntry.id,
         payment_date: payForm.date,
-        amount_raw: amt,
+        amount_raw: appliedRaw,
         currency: payForm.currency,
-        usd: paidUsd,
-        lbp: paidLbp,
+        usd: appliedUsd,
+        lbp: appliedLbp,
         payment_method: payForm.method,
       })
       .select()
@@ -1087,16 +1095,20 @@ export default function Dashboard() {
   const reportStats = useMemo(() => {
     const start = reportStartDate;
     const end = reportEndDate < reportStartDate ? reportStartDate : reportEndDate;
-    const saleEntryIds = new Set(entries.filter((e) => e.type === 'sale' && e.product).map((e) => e.id));
     const periodSales = entries.filter((e) => e.type === 'sale' && e.entry_date >= start && e.entry_date <= end && e.product);
-    const periodPayments = salePayments.filter((p) => p.payment_date >= start && p.payment_date <= end && saleEntryIds.has(p.entry_id));
+    const periodSaleIds = new Set(periodSales.map((e) => e.id));
+    // Collected = amount received (ever) against this period's own sales, not
+    // just payments that happened to land in the date range — otherwise cash
+    // collected for an older sale inflates Collected/Collection Rate for a
+    // period with little new revenue of its own.
+    const periodPayments = salePayments.filter((p) => periodSaleIds.has(p.entry_id));
     return computeSaleStats(periodSales, periodPayments);
   }, [entries, salePayments, reportStartDate, reportEndDate]);
 
   const monthlyStats = useMemo(() => {
-    const saleEntryIds = new Set(entries.filter((e) => e.type === 'sale' && e.product).map((e) => e.id));
     const monthSales = entries.filter((e) => e.type === 'sale' && e.entry_date.slice(0, 7) === monthlyMonth && e.product);
-    const monthPayments = salePayments.filter((p) => p.payment_date.slice(0, 7) === monthlyMonth && saleEntryIds.has(p.entry_id));
+    const monthSaleIds = new Set(monthSales.map((e) => e.id));
+    const monthPayments = salePayments.filter((p) => monthSaleIds.has(p.entry_id));
     return computeSaleStats(monthSales, monthPayments);
   }, [entries, salePayments, monthlyMonth]);
 
