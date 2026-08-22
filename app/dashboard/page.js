@@ -594,6 +594,14 @@ export default function Dashboard() {
     setForm((f) => ({ ...emptyForm(), type: f.type, currency: f.currency }));
   };
 
+  const customerLabel = (entry) => {
+    if (entry.customer_id) {
+      const c = customers.find((cust) => cust.id === entry.customer_id);
+      if (c) return `${c.name} (${c.code})`;
+    }
+    return entry.where_text || '';
+  };
+
   const openInvoice = (entry) => {
     if (entry.type === 'sale' && entry.product) {
       const sameGroup = entries.filter((e) =>
@@ -2377,6 +2385,8 @@ export default function Dashboard() {
 
               {(() => {
                 const primary = invoiceEntries[0];
+                const partyEntry = invoiceEntries.find((e) => customerLabel(e).trim()) || primary;
+                const partyLabel = customerLabel(partyEntry) || '—';
                 return (
                   <>
                     <div style={{ display: 'flex', gap: 48, marginTop: 22 }}>
@@ -2396,7 +2406,7 @@ export default function Dashboard() {
                         <div style={{ fontSize: 13, color: '#12202b', marginTop: 2 }}>
                           {(primary.type === 'sale' || primary.type === 'investment')
                             ? (primary.supplier_text || '—')
-                            : (BOUGHT_FROM_TYPES.includes(primary.type) || (primary.type === 'debt' && primary.debt_direction === 'i_owe')) ? (primary.where_text || '—') : ''}
+                            : (BOUGHT_FROM_TYPES.includes(primary.type) || (primary.type === 'debt' && primary.debt_direction === 'i_owe')) ? partyLabel : ''}
                         </div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
@@ -2404,7 +2414,7 @@ export default function Dashboard() {
                         <div style={{ fontSize: 13, color: '#12202b', marginTop: 2 }}>
                           {primary.type === 'investment'
                             ? (primary.status === 'sold' ? (primary.where_text || '—') : '')
-                            : (!BOUGHT_FROM_TYPES.includes(primary.type) && !(primary.type === 'debt' && primary.debt_direction === 'i_owe')) ? (primary.where_text || '—') : ''}
+                            : (!BOUGHT_FROM_TYPES.includes(primary.type) && !(primary.type === 'debt' && primary.debt_direction === 'i_owe')) ? partyLabel : ''}
                         </div>
                       </div>
                     </div>
