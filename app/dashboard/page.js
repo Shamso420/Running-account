@@ -1245,8 +1245,9 @@ export default function Dashboard() {
     if (!loading && !canAdd && tab === 'add') setTab('ledger');
   }, [canAdd, loading, tab]);
 
+  const OTHER_ACCOUNT_RESTRICTED_TABS = ['dashboard', 'daily', 'monthly', 'costs', 'wages', 'partnerDebts', 'inventory', 'goals'];
   useEffect(() => {
-    if (!loading && !is360Cell && (tab === 'costs' || tab === 'partnerDebts')) setTab('ledger');
+    if (!loading && !is360Cell && OTHER_ACCOUNT_RESTRICTED_TABS.includes(tab)) setTab('ledger');
   }, [is360Cell, loading, tab]);
 
   if (session === undefined || loading) {
@@ -1329,15 +1330,15 @@ export default function Dashboard() {
           {[
             ...(canAdd ? [{ key: 'add', label: 'Add entry' }] : []),
             { key: 'ledger', label: 'Ledger' },
-            { key: 'dashboard', label: 'Dashboard' },
-            { key: 'daily', label: 'Report' },
-            { key: 'monthly', label: 'Monthly' },
+            ...(is360Cell ? [{ key: 'dashboard', label: 'Dashboard' }] : []),
+            ...(is360Cell ? [{ key: 'daily', label: 'Report' }] : []),
+            ...(is360Cell ? [{ key: 'monthly', label: 'Monthly' }] : []),
             ...(is360Cell ? [{ key: 'costs', label: '360 Cell Costs' }] : []),
-            { key: 'wages', label: 'Wages' },
+            ...(is360Cell ? [{ key: 'wages', label: 'Wages' }] : []),
             { key: 'debts', label: 'Debts' },
             ...(is360Cell ? [{ key: 'partnerDebts', label: '360 Debts' }] : []),
-            { key: 'inventory', label: 'Inventory' },
-            ...(plan === 'business' ? [{ key: 'goals', label: 'Goals' }] : []),
+            ...(is360Cell ? [{ key: 'inventory', label: 'Inventory' }] : []),
+            ...(is360Cell && plan === 'business' ? [{ key: 'goals', label: 'Goals' }] : []),
           ].map((t) => (
             <button key={t.key} onClick={() => { if (t.key === 'add') cancelEditEntry(); setTab(t.key); }} style={{
               padding: '9px 16px', border: 'none', cursor: 'pointer',
@@ -1374,7 +1375,7 @@ export default function Dashboard() {
             </p>
             <form onSubmit={addEntry} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {TYPES.map((t) => (
+                {(is360Cell ? TYPES : TYPES.filter((t) => t.key !== 'sale')).map((t) => (
                   <button type="button" key={t.key} disabled={!!editingEntryId}
                     onClick={() => setForm((f) => ({ ...f, type: t.key, category: '', product: '', cost: '', receivedNow: '', supplier: '', paymentMethod: 'Cash', quantity: '1', imei: '', serialNumber: '' }))} style={{
                     padding: '8px 14px', borderRadius: 20, cursor: editingEntryId ? 'default' : 'pointer',
@@ -1500,7 +1501,7 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {form.type !== 'investment' && (
+              {form.type !== 'investment' && is360Cell && (
                 <div>
                   <div style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, marginBottom: 6 }}>
                     {form.type === 'sale' ? 'Sold to (customer)' : 'Customer'}
@@ -1525,6 +1526,14 @@ export default function Dashboard() {
                     )}
                   </div>
                 </div>
+              )}
+
+              {form.type !== 'investment' && !is360Cell && (
+                <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                  {form.type === 'debt' ? 'Who this is with (optional)' : 'Name (optional)'}
+                  <input placeholder="e.g. Karim" value={form.where}
+                    onChange={(e) => setForm((f) => ({ ...f, where: e.target.value }))} style={{ marginTop: 6 }} />
+                </label>
               )}
               <div style={{ display: 'flex', gap: 12 }}>
                 <label style={{ flex: 1, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
