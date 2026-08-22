@@ -1245,6 +1245,10 @@ export default function Dashboard() {
     if (!loading && !canAdd && tab === 'add') setTab('ledger');
   }, [canAdd, loading, tab]);
 
+  useEffect(() => {
+    if (!loading && !is360Cell && (tab === 'costs' || tab === 'partnerDebts')) setTab('ledger');
+  }, [is360Cell, loading, tab]);
+
   if (session === undefined || loading) {
     return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading…</div>;
   }
@@ -1328,10 +1332,10 @@ export default function Dashboard() {
             { key: 'dashboard', label: 'Dashboard' },
             { key: 'daily', label: 'Report' },
             { key: 'monthly', label: 'Monthly' },
-            { key: 'costs', label: '360 Cell Costs' },
+            ...(is360Cell ? [{ key: 'costs', label: '360 Cell Costs' }] : []),
             { key: 'wages', label: 'Wages' },
             { key: 'debts', label: 'Debts' },
-            { key: 'partnerDebts', label: '360 Debts' },
+            ...(is360Cell ? [{ key: 'partnerDebts', label: '360 Debts' }] : []),
             { key: 'inventory', label: 'Inventory' },
             ...(plan === 'business' ? [{ key: 'goals', label: 'Goals' }] : []),
           ].map((t) => (
