@@ -2385,14 +2385,15 @@ export default function Dashboard() {
                 <h1 style={{ fontSize: 30, fontWeight: 800, color: '#12202b', letterSpacing: '0.01em' }}>INVOICE</h1>
                 <div style={{ textAlign: 'right' }}>
                   {is360Cell ? (
-                    <img src="/logo-360cell.png" alt="360 Cell" style={{ height: 40, width: 'auto', borderRadius: 5, marginLeft: 'auto' }} />
+                    <>
+                      <img src="/logo-360cell.png" alt="360 Cell" style={{ height: 40, width: 'auto', borderRadius: 5, marginLeft: 'auto' }} />
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#12202b', marginTop: 6 }}>Phone: +961 81 055 797</div>
+                    </>
                   ) : (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
-                      <span style={{ fontFamily: "'Source Serif 4', serif", fontStyle: 'italic', fontWeight: 800, fontSize: 22, background: 'linear-gradient(120deg, #1f5fa8, #5fb8d9)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>360</span>
-                      <span style={{ fontFamily: "'Source Serif 4', serif", fontStyle: 'italic', fontWeight: 700, fontSize: 19, color: '#12202b' }}>CELL</span>
+                    <div style={{ fontFamily: "'Source Serif 4', serif", fontStyle: 'italic', fontWeight: 700, fontSize: 19, color: '#12202b' }}>
+                      The Running Account
                     </div>
                   )}
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#12202b', marginTop: 6 }}>Phone: +961 81 055 797</div>
                 </div>
               </div>
 
