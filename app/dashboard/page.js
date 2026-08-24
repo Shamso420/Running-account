@@ -264,9 +264,11 @@ export default function Dashboard() {
   const [editingInvId, setEditingInvId] = useState(null);
   const [editInvForm, setEditInvForm] = useState(null);
   const [editInvError, setEditInvError] = useState('');
+  const [invSearchQuery, setInvSearchQuery] = useState('');
+  const [invCategoryFilter, setInvCategoryFilter] = useState('all');
   const [savingInvEdit, setSavingInvEdit] = useState(false);
   const [salePayments, setSalePayments] = useState([]);
-  const [reportStartDate, setReportStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [reportStartDate, setReportStartDate] = useState(new Date().toISOString().slice(0, 8) + '01');
   const [reportEndDate, setReportEndDate] = useState(new Date().toISOString().slice(0, 10));
   const [monthlyMonth, setMonthlyMonth] = useState(new Date().toISOString().slice(0, 7));
   const entries = useMemo(
@@ -2021,7 +2023,7 @@ export default function Dashboard() {
                       onChange={(e) => setInvForm((f) => ({ ...f, quantity: e.target.value }))} style={{ marginTop: 6 }} />
                   </label>
                   <label style={{ flex: 1, minWidth: 160, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
-                    Notes (optional)
+                    Category (optional)
                     <input value={invForm.notes} onChange={(e) => setInvForm((f) => ({ ...f, notes: e.target.value }))} style={{ marginTop: 6 }} />
                   </label>
                   <button type="button" onClick={addInventoryItem} disabled={savingInv} style={{
@@ -2038,17 +2040,36 @@ export default function Dashboard() {
               </ChartCard>
             )}
 
-            <div style={{ marginTop: 24, overflow: 'auto' }}>
-              {inventoryItems.length === 0 ? <NoData /> : (
-                <table>
-                  <thead>
-                    <tr>{['Product', 'In stock', 'Notes', ''].map((h) => <th key={h}>{h}</th>)}</tr>
-                  </thead>
-                  <tbody>
-                    {inventoryItems.map((i) => {
-                      const qty = Number(i.quantity);
-                      const stockColor = qty <= 0 ? 'var(--coral)' : qty <= 5 ? 'var(--gold)' : 'var(--ink)';
-                      return (
+            {(() => {
+              const invCategories = Array.from(new Set(inventoryItems.map((i) => (i.notes || '').trim()).filter(Boolean))).sort();
+              const q = invSearchQuery.trim().toLowerCase();
+              const visibleInventoryItems = inventoryItems.filter((i) => {
+                const matchesQuery = !q || i.product_name.toLowerCase().includes(q) || (i.notes || '').toLowerCase().includes(q);
+                const matchesCategory = invCategoryFilter === 'all' || (i.notes || '').trim() === invCategoryFilter;
+                return matchesQuery && matchesCategory;
+              });
+              return (
+                <>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginTop: 24 }}>
+                    <input placeholder="Search products or category…" value={invSearchQuery}
+                      onChange={(e) => setInvSearchQuery(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
+                    <select value={invCategoryFilter} onChange={(e) => setInvCategoryFilter(e.target.value)} style={{ fontSize: 13 }}>
+                      <option value="all">All categories</option>
+                      {invCategories.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+
+                  <div style={{ marginTop: 16, overflow: 'auto' }}>
+                    {visibleInventoryItems.length === 0 ? <NoData /> : (
+                      <table>
+                        <thead>
+                          <tr>{['Product', 'In stock', 'Category', ''].map((h) => <th key={h}>{h}</th>)}</tr>
+                        </thead>
+                        <tbody>
+                          {visibleInventoryItems.map((i) => {
+                            const qty = Number(i.quantity);
+                            const stockColor = qty <= 0 ? 'var(--coral)' : qty <= 5 ? 'var(--gold)' : 'var(--ink)';
+                            return (
                         <tr key={i.id}>
                           {editingInvId === i.id ? (
                             <>
@@ -2092,12 +2113,15 @@ export default function Dashboard() {
                             </>
                           )}
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
           </div>
         )}
 
