@@ -107,7 +107,23 @@ function computeSaleStats(saleEntries, payments) {
   const bestCategory = categories.length ? categories[0] : null;
   const worstCategory = categories.length ? categories[categories.length - 1] : null;
 
-  return { transactions, revenue, cost, grossProfit, grossMargin, avgProfitPerSale, collected, openReceivables, collectionRate, categories, bestCategory, worstCategory };
+  const transactionRows = saleEntries
+    .map((e) => ({
+      id: e.id,
+      entry_date: e.entry_date,
+      product: e.product,
+      category: e.category,
+      where_text: e.where_text,
+      customer_id: e.customer_id,
+      revenue: Number(e.usd),
+      cost: Number(e.cost_usd || 0),
+      profit: saleProfitUsd(e),
+      collected: Number(e.received_usd || 0),
+      balanceDue: Number(e.usd) - Number(e.received_usd || 0),
+    }))
+    .sort((a, b) => b.entry_date.localeCompare(a.entry_date));
+
+  return { transactions, revenue, cost, grossProfit, grossMargin, avgProfitPerSale, collected, openReceivables, collectionRate, categories, bestCategory, worstCategory, transactionRows };
 }
 
 const PIE_COLORS = ['#B8894C', '#B0463F', '#3F6E52', '#4C7A9E', '#8A6BA8', '#C48A3F', '#6B8F8A', '#9E6B5C'];
@@ -615,6 +631,11 @@ export default function Dashboard() {
     setInvoiceAddId('');
     setInvoiceGroupDays(0);
     setInvoiceExcludedPaymentIds(new Set());
+  };
+
+  const openInvoiceById = (id) => {
+    const entry = entries.find((e) => e.id === id);
+    if (entry) openInvoice(entry);
   };
 
   const expandInvoiceGroup = (days) => {
@@ -1918,7 +1939,7 @@ export default function Dashboard() {
                 <input type="date" value={reportEndDate} onChange={(e) => setReportEndDate(e.target.value)} style={{ marginTop: 6 }} />
               </label>
             </div>
-            <SaleStatsPanel stats={reportStats} />
+            <SaleStatsPanel stats={reportStats} customers={customers} onOpenInvoice={openInvoiceById} />
           </div>
         )}
 
@@ -1928,7 +1949,7 @@ export default function Dashboard() {
               Report month
               <input type="month" value={monthlyMonth} onChange={(e) => setMonthlyMonth(e.target.value)} style={{ marginTop: 6 }} />
             </label>
-            <SaleStatsPanel stats={monthlyStats} />
+            <SaleStatsPanel stats={monthlyStats} customers={customers} onOpenInvoice={openInvoiceById} />
           </div>
         )}
 
@@ -2744,7 +2765,14 @@ export default function Dashboard() {
   );
 }
 
-function SaleStatsPanel({ stats }) {
+function SaleStatsPanel({ stats, customers = [], onOpenInvoice }) {
+  const nameFor = (row) => {
+    if (row.customer_id) {
+      const c = customers.find((cust) => cust.id === row.customer_id);
+      if (c) return `${c.name} (${c.code})`;
+    }
+    return row.where_text || '—';
+  };
   return (
     <>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 32 }}>
@@ -2763,6 +2791,41 @@ function SaleStatsPanel({ stats }) {
         <KpiCard label="Best category" value={stats.bestCategory ? stats.bestCategory.category : '—'} color="var(--green)" />
         <KpiCard label="Needs attention" value={stats.worstCategory ? stats.worstCategory.category : '—'} color="var(--coral)" />
       </div>
+
+      <ChartCard title="Transactions">
+        {stats.transactionRows.length === 0 ? <NoData /> : (
+          <div style={{ overflow: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  {['Date', 'Product', 'Customer', 'Revenue', 'Cost', 'Profit', 'Collected', 'Balance due', ''].map((h) => <th key={h}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {stats.transactionRows.map((row) => (
+                  <tr key={row.id}>
+                    <td>{row.entry_date}</td>
+                    <td>{row.product}</td>
+                    <td>{nameFor(row)}</td>
+                    <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(row.revenue)}</td>
+                    <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(row.cost)}</td>
+                    <td style={{ fontFamily: "'IBM Plex Mono', monospace", color: row.profit >= 0 ? 'var(--green)' : 'var(--coral)' }}>{fmtUSD(row.profit)}</td>
+                    <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(row.collected)}</td>
+                    <td style={{ fontFamily: "'IBM Plex Mono', monospace", color: row.balanceDue > 0.001 ? 'var(--coral)' : 'var(--green)' }}>{fmtUSD(row.balanceDue)}</td>
+                    <td>
+                      {onOpenInvoice && (
+                        <button onClick={() => onOpenInvoice(row.id)} style={{ background: 'none', border: '1px solid var(--paper-line)', color: 'var(--ink)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>
+                          Invoice
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </ChartCard>
 
       <ChartCard title="By category">
         {stats.categories.length === 0 ? <NoData /> : (
