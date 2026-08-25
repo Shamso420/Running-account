@@ -2890,8 +2890,12 @@ function DebtsSection({
   canSettleDebt, onSettle, onIncreaseDebt, onRecordPayment,
   canDeleteEntry, onEdit, confirmDeleteId, setConfirmDeleteId, onDelete,
 }) {
+  const [openDebtsFilter, setOpenDebtsFilter] = useState('all');
   const todayStr = new Date().toISOString().slice(0, 10);
   const overdueCount = openDebts.filter((e) => daysBetween(todayStr, e.entry_date) > DEBT_OVERDUE_DAYS).length;
+  const visibleOpenDebts = openDebtsFilter === 'overdue'
+    ? openDebts.filter((e) => daysBetween(todayStr, e.entry_date) > DEBT_OVERDUE_DAYS)
+    : openDebts;
   return (
     <div style={{ maxWidth: 900 }}>
       <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
@@ -2979,14 +2983,31 @@ function DebtsSection({
       )}
 
       <div style={{ marginTop: 24, overflow: 'auto' }}>
-        <h3 style={{ fontSize: 16, marginBottom: 12 }}>Open debts</h3>
-        {openDebts.length === 0 ? <NoData /> : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+          <h3 style={{ fontSize: 16, margin: 0 }}>Open debts</h3>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {[
+              { key: 'all', label: `All (${openDebts.length})` },
+              { key: 'overdue', label: `Overdue (${overdueCount})` },
+            ].map((f) => (
+              <button type="button" key={f.key} onClick={() => setOpenDebtsFilter(f.key)} style={{
+                padding: '5px 12px', borderRadius: 20, cursor: 'pointer',
+                border: `1.5px solid ${openDebtsFilter === f.key ? 'var(--coral)' : 'var(--paper-line)'}`,
+                background: openDebtsFilter === f.key ? 'rgba(176,70,63,0.1)' : 'transparent',
+                color: openDebtsFilter === f.key ? 'var(--coral)' : 'var(--slate)', fontWeight: 600, fontSize: 12,
+              }}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {visibleOpenDebts.length === 0 ? <NoData /> : (
           <table>
             <thead>
               <tr>{['Date', 'Who', 'Direction', 'Category', 'Amount', 'Balance due', 'Status', ''].map((h) => <th key={h}>{h}</th>)}</tr>
             </thead>
             <tbody>
-              {openDebts.map((e) => {
+              {visibleOpenDebts.map((e) => {
                 const balanceDue = Number(e.usd) - Number(e.received_usd || 0);
                 const status = debtCollectionStatus(e);
                 const statusColor = status === 'Settled' ? 'var(--green)' : status === 'Partial' ? 'var(--gold)' : 'var(--coral)';
