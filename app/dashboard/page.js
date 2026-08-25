@@ -2412,7 +2412,7 @@ export default function Dashboard() {
               body * { visibility: hidden; }
               .invoice-print, .invoice-print * { visibility: visible; }
               .invoice-print {
-                position: absolute; inset: 0 auto auto 0; margin: 0; box-shadow: none !important; border-radius: 0 !important;
+                position: static !important; margin: 0 !important; box-shadow: none !important; border-radius: 0 !important;
                 width: 100% !important; max-width: 100% !important; max-height: none !important; overflow: visible !important;
               }
               .invoice-overlay { position: static !important; background: none !important; padding: 0 !important; display: block !important; }
