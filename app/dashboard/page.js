@@ -198,6 +198,7 @@ function invoiceDateStr(dateStr) {
 }
 
 const BOUGHT_FROM_TYPES = ['expense', 'investment'];
+const DEBT_OVERDUE_DAYS = 3;
 
 export default function Dashboard() {
   const router = useRouter();
@@ -2889,6 +2890,8 @@ function DebtsSection({
   canSettleDebt, onSettle, onIncreaseDebt, onRecordPayment,
   canDeleteEntry, onEdit, confirmDeleteId, setConfirmDeleteId, onDelete,
 }) {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const overdueCount = openDebts.filter((e) => daysBetween(todayStr, e.entry_date) > DEBT_OVERDUE_DAYS).length;
   return (
     <div style={{ maxWidth: 900 }}>
       <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
@@ -2913,6 +2916,7 @@ function DebtsSection({
         <KpiCard label="Currently owed to me" value={fmtUSD(currentTotals.owedToMe)} color="var(--green)" />
         <KpiCard label="Currently I owe" value={fmtUSD(currentTotals.iOwe)} color="var(--coral)" />
         <KpiCard label="Net debt" value={fmtUSD(currentTotals.net)} color={currentTotals.net >= 0 ? 'var(--green)' : 'var(--coral)'} bold />
+        <KpiCard label={`Overdue (${DEBT_OVERDUE_DAYS}+ days)`} value={String(overdueCount)} color={overdueCount > 0 ? 'var(--coral)' : 'var(--green)'} />
       </div>
 
       {canAdd && (
@@ -2986,15 +2990,24 @@ function DebtsSection({
                 const balanceDue = Number(e.usd) - Number(e.received_usd || 0);
                 const status = debtCollectionStatus(e);
                 const statusColor = status === 'Settled' ? 'var(--green)' : status === 'Partial' ? 'var(--gold)' : 'var(--coral)';
+                const daysOpen = daysBetween(todayStr, e.entry_date);
+                const isOverdue = daysOpen > DEBT_OVERDUE_DAYS;
                 return (
-                  <tr key={e.id}>
+                  <tr key={e.id} style={isOverdue ? { background: 'rgba(176,70,63,0.08)' } : undefined}>
                     <td>{e.entry_date}</td>
                     <td>{e.where_text || '—'}</td>
                     <td>{e.debt_direction === 'i_owe' ? 'I owe' : 'Owed to me'}</td>
                     <td>{e.category}</td>
                     <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(e.usd)}</td>
                     <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(balanceDue)}</td>
-                    <td><span style={{ color: statusColor, fontWeight: 600 }}>{status}</span></td>
+                    <td>
+                      <span style={{ color: statusColor, fontWeight: 600 }}>{status}</span>
+                      {isOverdue && (
+                        <span style={{ marginLeft: 6, color: 'var(--coral)', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          Overdue · {Math.floor(daysOpen)}d
+                        </span>
+                      )}
+                    </td>
                     <td>
                       <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                         {canSettleDebt && (
