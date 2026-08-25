@@ -1317,7 +1317,8 @@ export default function Dashboard() {
 
   return (
     <div style={{ minHeight: '100vh' }}>
-    <div className="app-print-hide">
+    {invoiceEntries.length === 0 && (
+    <>
       <div style={{ height: 4, background: is360Cell ? 'linear-gradient(90deg, #1F5FA8, #76C0E7)' : 'linear-gradient(90deg, #3F6E52, #B8894C, #B0463F, #4C7A9E)' }} />
       <header style={{ borderBottom: '1px solid var(--paper-line)', padding: '26px 24px 18px' }}>
         <div style={{ maxWidth: 1080, margin: '0 auto', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
@@ -2234,7 +2235,6 @@ export default function Dashboard() {
           </div>
         )}
       </main>
-    </div>
 
       {sellingEntry && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,43,57,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 50 }}>
@@ -2401,6 +2401,8 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+    </>
+    )}
 
       {invoiceEntries.length > 0 && (
         <div className="invoice-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(28,43,57,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, padding: 20 }}>
@@ -2408,7 +2410,6 @@ export default function Dashboard() {
             @media print {
               @page { margin: 10mm; }
               html, body { height: auto !important; }
-              .app-print-hide { display: none !important; }
               body * { visibility: hidden; }
               .invoice-print, .invoice-print * { visibility: visible; }
               .invoice-print {
