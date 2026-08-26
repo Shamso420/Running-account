@@ -80,26 +80,45 @@ function computeCurrentDebtTotals(entries, section) {
   return { owedToMe, iOwe, net: owedToMe - iOwe };
 }
 
-function computeSaleStats(saleEntries, payments) {
-  const transactions = saleEntries.length;
-  const revenue = saleEntries.reduce((s, e) => s + Number(e.usd), 0);
-  const cost = saleEntries.reduce((s, e) => s + Number(e.cost_usd || 0), 0);
+function normalizeSaleRow(e) {
+  return {
+    id: e.id, entry_date: e.entry_date, category: e.category, kind: 'Sale', label: e.product,
+    where_text: e.where_text, customer_id: e.customer_id,
+    revenue: Number(e.usd), cost: Number(e.cost_usd || 0), collected: Number(e.received_usd || 0),
+  };
+}
+
+function normalizeInvestmentRow(e) {
+  const sold = e.status === 'sold';
+  const revenue = sold ? Number(e.sold_usd) : 0;
+  return {
+    id: e.id, entry_date: sold ? e.sold_date : e.entry_date, category: e.category,
+    kind: sold ? 'Investment (sold)' : 'Investment (bought)', label: e.category,
+    where_text: e.where_text, customer_id: null,
+    revenue, cost: Number(e.usd), collected: revenue,
+  };
+}
+
+function computeSaleStats(rows) {
+  const transactions = rows.length;
+  const revenue = rows.reduce((s, r) => s + r.revenue, 0);
+  const cost = rows.reduce((s, r) => s + r.cost, 0);
   const grossProfit = revenue - cost;
   const grossMargin = revenue > 0 ? grossProfit / revenue : 0;
   const avgProfitPerSale = transactions > 0 ? grossProfit / transactions : 0;
-  const collected = payments.reduce((s, p) => s + Number(p.usd), 0);
+  const collected = rows.reduce((s, r) => s + r.collected, 0);
   const openReceivables = revenue - collected;
   const collectionRate = revenue > 0 ? collected / revenue : 0;
 
   const byCategory = {};
-  saleEntries.forEach((e) => {
-    if (!byCategory[e.category]) byCategory[e.category] = { category: e.category, transactions: 0, revenue: 0, cost: 0, profit: 0, openBalance: 0 };
-    const c = byCategory[e.category];
+  rows.forEach((r) => {
+    if (!byCategory[r.category]) byCategory[r.category] = { category: r.category, transactions: 0, revenue: 0, cost: 0, profit: 0, openBalance: 0 };
+    const c = byCategory[r.category];
     c.transactions += 1;
-    c.revenue += Number(e.usd);
-    c.cost += Number(e.cost_usd || 0);
-    c.profit += saleProfitUsd(e);
-    c.openBalance += Number(e.usd) - Number(e.received_usd || 0);
+    c.revenue += r.revenue;
+    c.cost += r.cost;
+    c.profit += r.revenue - r.cost;
+    c.openBalance += r.revenue - r.collected;
   });
   const categories = Object.values(byCategory)
     .map((c) => ({ ...c, margin: c.revenue > 0 ? c.profit / c.revenue : 0 }))
@@ -107,20 +126,8 @@ function computeSaleStats(saleEntries, payments) {
   const bestCategory = categories.length ? categories[0] : null;
   const worstCategory = categories.length ? categories[categories.length - 1] : null;
 
-  const transactionRows = saleEntries
-    .map((e) => ({
-      id: e.id,
-      entry_date: e.entry_date,
-      product: e.product,
-      category: e.category,
-      where_text: e.where_text,
-      customer_id: e.customer_id,
-      revenue: Number(e.usd),
-      cost: Number(e.cost_usd || 0),
-      profit: saleProfitUsd(e),
-      collected: Number(e.received_usd || 0),
-      balanceDue: Number(e.usd) - Number(e.received_usd || 0),
-    }))
+  const transactionRows = rows
+    .map((r) => ({ ...r, profit: r.revenue - r.cost, balanceDue: r.revenue - r.collected }))
     .sort((a, b) => b.entry_date.localeCompare(a.entry_date));
 
   return { transactions, revenue, cost, grossProfit, grossMargin, avgProfitPerSale, collected, openReceivables, collectionRate, categories, bestCategory, worstCategory, transactionRows };
@@ -1188,21 +1195,26 @@ export default function Dashboard() {
     const start = reportStartDate;
     const end = reportEndDate < reportStartDate ? reportStartDate : reportEndDate;
     const periodSales = entries.filter((e) => e.type === 'sale' && e.entry_date >= start && e.entry_date <= end && e.product);
-    const periodSaleIds = new Set(periodSales.map((e) => e.id));
-    // Collected = amount received (ever) against this period's own sales, not
-    // just payments that happened to land in the date range — otherwise cash
-    // collected for an older sale inflates Collected/Collection Rate for a
-    // period with little new revenue of its own.
-    const periodPayments = salePayments.filter((p) => periodSaleIds.has(p.entry_id));
-    return computeSaleStats(periodSales, periodPayments);
-  }, [entries, salePayments, reportStartDate, reportEndDate]);
+    // Investments count in the period they're bought (still-owned stock) or
+    // the period they're sold (realized profit/loss) — never both, so an
+    // unsold purchase isn't double-counted once it later sells.
+    const periodInvestments = entries.filter((e) => {
+      if (e.type !== 'investment') return false;
+      const d = e.status === 'sold' ? e.sold_date : e.entry_date;
+      return d >= start && d <= end;
+    });
+    return computeSaleStats([...periodSales.map(normalizeSaleRow), ...periodInvestments.map(normalizeInvestmentRow)]);
+  }, [entries, reportStartDate, reportEndDate]);
 
   const monthlyStats = useMemo(() => {
     const monthSales = entries.filter((e) => e.type === 'sale' && e.entry_date.slice(0, 7) === monthlyMonth && e.product);
-    const monthSaleIds = new Set(monthSales.map((e) => e.id));
-    const monthPayments = salePayments.filter((p) => monthSaleIds.has(p.entry_id));
-    return computeSaleStats(monthSales, monthPayments);
-  }, [entries, salePayments, monthlyMonth]);
+    const monthInvestments = entries.filter((e) => {
+      if (e.type !== 'investment') return false;
+      const d = e.status === 'sold' ? e.sold_date : e.entry_date;
+      return (d || '').slice(0, 7) === monthlyMonth;
+    });
+    return computeSaleStats([...monthSales.map(normalizeSaleRow), ...monthInvestments.map(normalizeInvestmentRow)]);
+  }, [entries, monthlyMonth]);
 
   const costEntries = useMemo(
     () => entries.filter((e) => e.type === 'expense' && e.cost_section === 'cost').sort((a, b) => b.entry_date.localeCompare(a.entry_date)),
@@ -2810,7 +2822,7 @@ function SaleStatsPanel({ stats, customers = [], onOpenInvoice }) {
         <KpiCard label="Cost" value={fmtUSD(stats.cost)} color="var(--coral)" />
         <KpiCard label="Gross profit" value={fmtUSD(stats.grossProfit)} color="var(--blue)" bold />
         <KpiCard label="Gross margin" value={`${(stats.grossMargin * 100).toFixed(1)}%`} color="var(--gold)" />
-        <KpiCard label="Avg profit / sale" value={fmtUSD(stats.avgProfitPerSale)} color="var(--blue)" />
+        <KpiCard label="Avg profit / transaction" value={fmtUSD(stats.avgProfitPerSale)} color="var(--blue)" />
         <KpiCard label="Amount collected" value={fmtUSD(stats.collected)} color="var(--green)" />
         <KpiCard label="Open receivables" value={fmtUSD(stats.openReceivables)} color={stats.openReceivables > 0 ? 'var(--coral)' : 'var(--green)'} />
         <KpiCard label="Collection rate" value={`${(stats.collectionRate * 100).toFixed(1)}%`} color="var(--gold)" />
@@ -2827,14 +2839,15 @@ function SaleStatsPanel({ stats, customers = [], onOpenInvoice }) {
             <table>
               <thead>
                 <tr>
-                  {['Date', 'Product', 'Customer', 'Revenue', 'Cost', 'Profit', 'Collected', 'Balance due', ''].map((h) => <th key={h}>{h}</th>)}
+                  {['Date', 'Type', 'Item', 'Customer', 'Revenue', 'Cost', 'Profit', 'Collected', 'Balance due', ''].map((h) => <th key={h}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {stats.transactionRows.map((row) => (
                   <tr key={row.id}>
                     <td>{row.entry_date}</td>
-                    <td>{row.product}</td>
+                    <td>{row.kind}</td>
+                    <td>{row.label}</td>
                     <td>{nameFor(row)}</td>
                     <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(row.revenue)}</td>
                     <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(row.cost)}</td>
