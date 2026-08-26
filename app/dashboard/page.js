@@ -265,7 +265,7 @@ export default function Dashboard() {
   const [partnerDebtStartDate, setPartnerDebtStartDate] = useState(new Date().toISOString().slice(0, 10));
   const [partnerDebtEndDate, setPartnerDebtEndDate] = useState(new Date().toISOString().slice(0, 10));
   const [inventoryItems, setInventoryItems] = useState([]);
-  const [invForm, setInvForm] = useState({ productName: '', quantity: '', notes: '' });
+  const [invForm, setInvForm] = useState({ productName: '', quantity: '', notes: '', unitCost: '' });
   const [invError, setInvError] = useState('');
   const [savingInv, setSavingInv] = useState(false);
   const [confirmDeleteInvId, setConfirmDeleteInvId] = useState(null);
@@ -951,11 +951,14 @@ export default function Dashboard() {
     if (!qty || qty <= 0) { setInvError('Enter a quantity greater than zero.'); return; }
     setInvError('');
     setSavingInv(true);
+    const costTrimmed = invForm.unitCost.trim();
+    const unitCost = costTrimmed === '' ? null : parseFloat(costTrimmed);
+    if (costTrimmed !== '' && (Number.isNaN(unitCost) || unitCost < 0)) { setInvError('Enter a valid cost per unit, or leave it blank.'); return; }
     const existing = findInventoryMatch(name);
     if (existing) {
       const { data, error } = await supabase
         .from('inventory')
-        .update({ quantity: Number(existing.quantity) + qty })
+        .update({ quantity: Number(existing.quantity) + qty, unit_cost: unitCost === null ? existing.unit_cost : unitCost })
         .eq('id', existing.id)
         .select()
         .single();
@@ -965,14 +968,14 @@ export default function Dashboard() {
     } else {
       const { data, error } = await supabase
         .from('inventory')
-        .insert({ user_id: session.user.id, product_name: name, quantity: qty, notes: invForm.notes.trim() })
+        .insert({ user_id: session.user.id, product_name: name, quantity: qty, notes: invForm.notes.trim(), unit_cost: unitCost })
         .select()
         .single();
       setSavingInv(false);
       if (error) { setInvError('Could not save: ' + error.message); return; }
       setInventoryItems((prev) => [...prev, data].sort((a, b) => a.product_name.localeCompare(b.product_name)));
     }
-    setInvForm({ productName: '', quantity: '', notes: '' });
+    setInvForm({ productName: '', quantity: '', notes: '', unitCost: '' });
   };
 
   const deleteInventoryItem = async (id) => {
@@ -983,7 +986,7 @@ export default function Dashboard() {
 
   const beginEditInventory = (item) => {
     setEditingInvId(item.id);
-    setEditInvForm({ productName: item.product_name, quantity: String(item.quantity), notes: item.notes || '' });
+    setEditInvForm({ productName: item.product_name, quantity: String(item.quantity), notes: item.notes || '', unitCost: item.unit_cost != null ? String(item.unit_cost) : '' });
     setEditInvError('');
   };
 
@@ -998,10 +1001,13 @@ export default function Dashboard() {
     const qty = parseFloat(editInvForm.quantity);
     if (!name) { setEditInvError('Enter a product name.'); return; }
     if (Number.isNaN(qty)) { setEditInvError('Enter a valid quantity.'); return; }
+    const costTrimmed = editInvForm.unitCost.trim();
+    const unitCost = costTrimmed === '' ? null : parseFloat(costTrimmed);
+    if (costTrimmed !== '' && (Number.isNaN(unitCost) || unitCost < 0)) { setEditInvError('Enter a valid cost per unit, or leave it blank.'); return; }
     setSavingInvEdit(true);
     const { data, error } = await supabase
       .from('inventory')
-      .update({ product_name: name, quantity: qty, notes: editInvForm.notes.trim() })
+      .update({ product_name: name, quantity: qty, notes: editInvForm.notes.trim(), unit_cost: unitCost })
       .eq('id', editingInvId)
       .select()
       .single();
@@ -2025,6 +2031,7 @@ export default function Dashboard() {
               <KpiCard label="Products tracked" value={String(inventoryItems.length)} color="var(--gold)" />
               <KpiCard label="Total units in stock" value={String(inventoryItems.reduce((s, i) => s + Number(i.quantity), 0))} color="var(--gold)" />
               <KpiCard label="Out of stock" value={String(inventoryItems.filter((i) => Number(i.quantity) <= 0).length)} color="var(--coral)" />
+              <KpiCard label="Total stock value" value={fmtUSD(inventoryItems.reduce((s, i) => s + Number(i.quantity) * Number(i.unit_cost || 0), 0))} color="var(--gold)" />
             </div>
 
             {canAdd && (
@@ -2044,6 +2051,11 @@ export default function Dashboard() {
                     Category (optional)
                     <input value={invForm.notes} onChange={(e) => setInvForm((f) => ({ ...f, notes: e.target.value }))} style={{ marginTop: 6 }} />
                   </label>
+                  <label style={{ width: 130, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                    Cost per unit (optional)
+                    <input type="number" step="any" min="0" placeholder="0" value={invForm.unitCost}
+                      onChange={(e) => setInvForm((f) => ({ ...f, unitCost: e.target.value }))} style={{ marginTop: 6 }} />
+                  </label>
                   <button type="button" onClick={addInventoryItem} disabled={savingInv} style={{
                     padding: '10px 18px', border: 'none', borderRadius: 4,
                     background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600, opacity: savingInv ? 0.6 : 1,
@@ -2052,7 +2064,7 @@ export default function Dashboard() {
                   </button>
                 </div>
                 <p style={{ fontSize: 12, color: 'var(--slate)', margin: '10px 0 0' }}>
-                  If the product name already exists, this adds to its current stock instead of creating a duplicate.
+                  If the product name already exists, this adds to its current stock instead of creating a duplicate. Leave cost blank to keep the existing cost, or enter one to update it.
                 </p>
                 {invError && <div style={{ color: 'var(--coral)', fontSize: 13, marginTop: 10 }}>{invError}</div>}
               </ChartCard>
@@ -2081,7 +2093,7 @@ export default function Dashboard() {
                     {visibleInventoryItems.length === 0 ? <NoData /> : (
                       <table>
                         <thead>
-                          <tr>{['Product', 'In stock', 'Category', ''].map((h) => <th key={h}>{h}</th>)}</tr>
+                          <tr>{['Product', 'In stock', 'Category', 'Unit cost', 'Value', ''].map((h) => <th key={h}>{h}</th>)}</tr>
                         </thead>
                         <tbody>
                           {visibleInventoryItems.map((i) => {
@@ -2101,6 +2113,10 @@ export default function Dashboard() {
                                 <input value={editInvForm.notes} onChange={(e) => setEditInvForm((f) => ({ ...f, notes: e.target.value }))} style={{ width: 150 }} />
                               </td>
                               <td>
+                                <input type="number" step="any" min="0" value={editInvForm.unitCost} onChange={(e) => setEditInvForm((f) => ({ ...f, unitCost: e.target.value }))} style={{ width: 90 }} />
+                              </td>
+                              <td style={{ color: 'var(--slate)' }}>—</td>
+                              <td>
                                 <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                                   <button onClick={saveEditInventory} disabled={savingInvEdit} style={{ background: 'var(--ink)', color: 'var(--paper)', border: 'none', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600, opacity: savingInvEdit ? 0.6 : 1 }}>
                                     {savingInvEdit ? 'Saving…' : 'Save'}
@@ -2115,6 +2131,8 @@ export default function Dashboard() {
                               <td>{i.product_name}</td>
                               <td style={{ fontFamily: "'IBM Plex Mono', monospace", color: stockColor, fontWeight: 600 }}>{qty}</td>
                               <td style={{ color: 'var(--slate)' }}>{i.notes || '—'}</td>
+                              <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{i.unit_cost != null ? fmtUSD(i.unit_cost) : '—'}</td>
+                              <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{i.unit_cost != null ? fmtUSD(qty * Number(i.unit_cost)) : '—'}</td>
                               <td>
                                 <span style={{ display: 'flex', gap: 6 }}>
                                   {canDeleteEntry && <button onClick={() => beginEditInventory(i)} style={{ background: 'none', border: '1px solid var(--paper-line)', color: 'var(--ink)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Edit</button>}
