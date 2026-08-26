@@ -274,6 +274,8 @@ export default function Dashboard() {
   const [editInvError, setEditInvError] = useState('');
   const [invSearchQuery, setInvSearchQuery] = useState('');
   const [invCategoryFilter, setInvCategoryFilter] = useState('all');
+  const [journalQuery, setJournalQuery] = useState('');
+  const [journalCustomerId, setJournalCustomerId] = useState(null);
   const [savingInvEdit, setSavingInvEdit] = useState(false);
   const [salePayments, setSalePayments] = useState([]);
   const [reportStartDate, setReportStartDate] = useState(new Date().toISOString().slice(0, 8) + '01');
@@ -1281,7 +1283,7 @@ export default function Dashboard() {
     if (!loading && !canAdd && tab === 'add') setTab('ledger');
   }, [canAdd, loading, tab]);
 
-  const OTHER_ACCOUNT_RESTRICTED_TABS = ['dashboard', 'daily', 'monthly', 'costs', 'wages', 'partnerDebts', 'inventory', 'goals'];
+  const OTHER_ACCOUNT_RESTRICTED_TABS = ['dashboard', 'daily', 'monthly', 'costs', 'wages', 'partnerDebts', 'inventory', 'journal', 'goals'];
   useEffect(() => {
     if (!loading && !is360Cell && OTHER_ACCOUNT_RESTRICTED_TABS.includes(tab)) setTab('ledger');
   }, [is360Cell, loading, tab]);
@@ -1376,6 +1378,7 @@ export default function Dashboard() {
             { key: 'debts', label: 'Debts' },
             ...(is360Cell ? [{ key: 'partnerDebts', label: '360 Debts' }] : []),
             ...(is360Cell ? [{ key: 'inventory', label: 'Inventory' }] : []),
+            ...(is360Cell ? [{ key: 'journal', label: 'Journal' }] : []),
             ...(is360Cell && plan === 'business' ? [{ key: 'goals', label: 'Goals' }] : []),
           ].map((t) => (
             <button key={t.key} onClick={() => { if (t.key === 'add') cancelEditEntry(); setTab(t.key); }} style={{
@@ -2140,6 +2143,138 @@ export default function Dashboard() {
           </div>
         )}
 
+        {tab === 'journal' && (
+          <div style={{ maxWidth: 900 }}>
+            <p style={{ color: 'var(--slate)', fontSize: 14, marginTop: 0, marginBottom: 20 }}>
+              Look up a customer to see their full history — sales, debts, and anything sold to them.
+            </p>
+            <input placeholder="Search by name or code…" value={journalQuery}
+              onChange={(e) => setJournalQuery(e.target.value)} style={{ maxWidth: 340, marginBottom: 16 }} />
+
+            {(() => {
+              const q = journalQuery.trim().toLowerCase();
+              const matches = q
+                ? customers.filter((c) => c.name.toLowerCase().includes(q) || c.code.includes(q))
+                : customers;
+              const selected = customers.find((c) => c.id === journalCustomerId) || null;
+
+              if (!selected) {
+                return (
+                  <div style={{ border: matches.length ? '1px solid var(--paper-line)' : 'none', borderRadius: 4, overflow: 'hidden' }}>
+                    {matches.length === 0 ? <NoData /> : matches.map((c) => (
+                      <button type="button" key={c.id} onClick={() => setJournalCustomerId(c.id)} style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%',
+                        padding: '10px 14px', background: 'var(--card)', border: 'none', borderBottom: '1px solid var(--paper-line)',
+                        textAlign: 'left', cursor: 'pointer',
+                      }}>
+                        <span style={{ fontSize: 14, color: 'var(--ink)' }}>{c.name}</span>
+                        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: 'var(--gold)' }}>{c.code}</span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              }
+
+              const nameLower = selected.name.trim().toLowerCase();
+              const history = entries
+                .filter((e) => (e.type === 'sale' || e.type === 'debt' || e.type === 'investment') &&
+                  (e.customer_id === selected.id || (e.where_text || '').trim().toLowerCase() === nameLower))
+                .sort((a, b) => b.entry_date.localeCompare(a.entry_date));
+
+              const salesRows = history.filter((e) => e.type === 'sale' && e.product);
+              const soldInvestments = history.filter((e) => e.type === 'investment' && e.status === 'sold');
+              const totalRevenue = salesRows.reduce((s, e) => s + Number(e.usd), 0) + soldInvestments.reduce((s, e) => s + Number(e.sold_usd), 0);
+              const totalProfit = salesRows.reduce((s, e) => s + saleProfitUsd(e), 0) + soldInvestments.reduce((s, e) => s + (Number(e.sold_usd) - Number(e.usd)), 0);
+              const totalCollected = salesRows.reduce((s, e) => s + Number(e.received_usd || 0), 0) + soldInvestments.reduce((s, e) => s + Number(e.sold_usd), 0);
+              const totalOpenBalance = totalRevenue - totalCollected;
+              const openDebtEntries = history.filter((e) => e.type === 'debt' && e.status !== 'settled');
+              const debtOwedToMe = openDebtEntries.filter((e) => e.debt_direction !== 'i_owe').reduce((s, e) => s + (Number(e.usd) - Number(e.received_usd || 0)), 0);
+              const debtIOwe = openDebtEntries.filter((e) => e.debt_direction === 'i_owe').reduce((s, e) => s + (Number(e.usd) - Number(e.received_usd || 0)), 0);
+
+              return (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
+                    <div>
+                      <h3 style={{ fontSize: 18 }}>{selected.name}</h3>
+                      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: 'var(--gold)' }}>{selected.code}</div>
+                    </div>
+                    <button type="button" onClick={() => { setJournalCustomerId(null); setJournalQuery(''); }} style={{
+                      padding: '8px 14px', border: '1px solid var(--paper-line)', borderRadius: 4, background: 'transparent', color: 'var(--ink)', fontWeight: 600, fontSize: 13,
+                    }}>
+                      ← Back to search
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 32 }}>
+                    <KpiCard label="Total purchased" value={fmtUSD(totalRevenue)} color="var(--green)" />
+                    <KpiCard label="Total profit" value={fmtUSD(totalProfit)} color="var(--blue)" bold />
+                    <KpiCard label="Open balance (sales)" value={fmtUSD(totalOpenBalance)} color={totalOpenBalance > 0.001 ? 'var(--coral)' : 'var(--green)'} />
+                    <KpiCard label="Debt — owed to me" value={fmtUSD(debtOwedToMe)} color="var(--green)" />
+                    <KpiCard label="Debt — I owe" value={fmtUSD(debtIOwe)} color="var(--coral)" />
+                  </div>
+
+                  <ChartCard title="Transaction history">
+                    {history.length === 0 ? <NoData /> : (
+                      <div style={{ overflow: 'auto' }}>
+                        <table>
+                          <thead>
+                            <tr>{['Date', 'Type', 'Details', 'Amount', 'Status', ''].map((h) => <th key={h}>{h}</th>)}</tr>
+                          </thead>
+                          <tbody>
+                            {history.map((e) => {
+                              const isSale = e.type === 'sale' && e.product;
+                              const isInvestment = e.type === 'investment';
+                              const isDebt = e.type === 'debt';
+                              let typeLabel = 'Sale';
+                              let details = e.product || e.category;
+                              let amount = Number(e.usd);
+                              let status = '';
+                              let statusColor = 'var(--slate)';
+                              if (isSale) {
+                                const balance = Number(e.usd) - Number(e.received_usd || 0);
+                                status = balance > 0.001 ? `${fmtUSD(balance)} due` : 'Paid';
+                                statusColor = balance > 0.001 ? 'var(--coral)' : 'var(--green)';
+                              } else if (isInvestment) {
+                                typeLabel = e.status === 'sold' ? 'Investment (sold)' : 'Investment (bought)';
+                                details = e.category;
+                                amount = e.status === 'sold' ? Number(e.sold_usd) : Number(e.usd);
+                                const invProfit = Number(e.sold_usd) - Number(e.usd);
+                                status = e.status === 'sold' ? `Profit ${fmtUSD(invProfit)}` : 'Not sold yet';
+                                statusColor = e.status === 'sold' ? (invProfit >= 0 ? 'var(--green)' : 'var(--coral)') : 'var(--slate)';
+                              } else if (isDebt) {
+                                typeLabel = e.debt_direction === 'i_owe' ? 'Debt (I owe)' : 'Debt (owed to me)';
+                                details = e.category;
+                                status = debtCollectionStatus(e);
+                                statusColor = status === 'Settled' ? 'var(--green)' : status === 'Partial' ? 'var(--gold)' : 'var(--coral)';
+                              }
+                              return (
+                                <tr key={e.id}>
+                                  <td>{e.entry_date}</td>
+                                  <td>{typeLabel}</td>
+                                  <td>{details}</td>
+                                  <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(amount)}</td>
+                                  <td><span style={{ color: statusColor, fontWeight: 600 }}>{status}</span></td>
+                                  <td>
+                                    {(isSale || isInvestment) && (
+                                      <button onClick={() => openInvoiceById(e.id)} style={{ background: 'none', border: '1px solid var(--paper-line)', color: 'var(--ink)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>
+                                        Invoice
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </ChartCard>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
         {tab === 'goals' && plan === 'business' && (
           <div>
             <p style={{ color: 'var(--slate)', fontSize: 14, marginTop: 0, marginBottom: 24 }}>
@@ -2438,11 +2573,13 @@ export default function Dashboard() {
             borderRadius: 6, position: 'relative', boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
           }}>
             {/* Top diagonal teal band */}
-            <div style={{
-              position: 'relative', padding: '32px 36px 26px',
-              background: 'linear-gradient(120deg, #cdeee3 0%, #a9d9dd 55%, #8fcbe0 100%)',
-              clipPath: 'polygon(0 0, 100% 0, 100% 78%, 0 100%)',
-            }}>
+            <div style={{ position: 'relative', padding: '32px 36px 26px' }}>
+              <div style={{
+                position: 'absolute', inset: 0, zIndex: 0,
+                background: 'linear-gradient(120deg, #cdeee3 0%, #a9d9dd 55%, #8fcbe0 100%)',
+                clipPath: 'polygon(0 0, 100% 0, 100% 78%, 0 100%)',
+              }} />
+              <div style={{ position: 'relative', zIndex: 1 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <h1 style={{ fontSize: 30, fontWeight: 800, color: '#12202b', letterSpacing: '0.01em' }}>INVOICE</h1>
                 <div style={{ textAlign: 'right' }}>
@@ -2497,6 +2634,7 @@ export default function Dashboard() {
                   </>
                 );
               })()}
+              </div>
             </div>
 
             {/* Details */}
