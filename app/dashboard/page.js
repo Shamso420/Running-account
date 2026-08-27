@@ -144,10 +144,10 @@ const GOAL_PERIODS = [
 ];
 
 const GOAL_METRICS = [
-  { key: 'income_plus_profit', label: 'Income + sale profit' },
+  { key: 'income_plus_profit', label: 'Income + gross profit' },
   { key: 'income', label: 'Income only' },
-  { key: 'profit', label: 'Sale profit only' },
-  { key: 'net', label: 'Net (income + profit − expenses − investments)' },
+  { key: 'profit', label: 'Gross profit (sales + investments)' },
+  { key: 'net', label: 'Net (income + gross profit − expenses)' },
 ];
 
 function localDateStr(d) {
@@ -180,21 +180,29 @@ function periodRange(period) {
 function computeAchieved(goal, entries) {
   const { start, end } = periodRange(goal.period);
   const relevant = entries.filter((e) => e.entry_date >= start && e.entry_date <= end);
-  if (goal.metric === 'income') return relevant.filter((e) => e.type === 'income').reduce((s, e) => s + Number(e.usd), 0);
-  if (goal.metric === 'profit') return relevant.filter((e) => e.type === 'sale').reduce((s, e) => s + saleProfitUsd(e), 0);
-  if (goal.metric === 'income_plus_profit') {
-    return relevant.reduce((s, e) => {
-      if (e.type === 'income') return s + Number(e.usd);
-      if (e.type === 'sale') return s + saleProfitUsd(e);
-      return s;
+  const income = relevant.filter((e) => e.type === 'income').reduce((s, e) => s + Number(e.usd), 0);
+  const expenses = relevant.filter((e) => e.type === 'expense').reduce((s, e) => s + Number(e.usd), 0);
+
+  // Gross profit here matches the Report/Monthly tabs exactly: sales profit,
+  // plus investments — counted as a cost in the period bought, or as
+  // revenue+profit in the period sold (never both, so an unsold purchase
+  // isn't double-counted once it later sells).
+  const periodSales = relevant.filter((e) => e.type === 'sale' && e.product);
+  const periodInvestments = entries.filter((e) => {
+    if (e.type !== 'investment') return false;
+    const d = e.status === 'sold' ? e.sold_date : e.entry_date;
+    return d >= start && d <= end;
+  });
+  const grossProfit = periodSales.reduce((s, e) => s + saleProfitUsd(e), 0)
+    + periodInvestments.reduce((s, e) => {
+      const r = normalizeInvestmentRow(e);
+      return s + (r.revenue - r.cost);
     }, 0);
-  }
-  return relevant.reduce((s, e) => {
-    if (e.type === 'income') return s + Number(e.usd);
-    if (e.type === 'sale') return s + saleProfitUsd(e);
-    if (e.type === 'expense' || e.type === 'investment') return s - Number(e.usd);
-    return s;
-  }, 0);
+
+  if (goal.metric === 'income') return income;
+  if (goal.metric === 'profit') return grossProfit;
+  if (goal.metric === 'income_plus_profit') return income + grossProfit;
+  return income + grossProfit - expenses;
 }
 
 function invoiceNumber(entry) {
