@@ -1875,7 +1875,7 @@ export default function Dashboard() {
                                           {canSettleDebt && isActiveDebt && (
                                             <button onClick={() => settleDebt(e)} style={{ background: 'none', border: '1px solid #8A6BA8', color: '#8A6BA8', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Settle</button>
                                           )}
-                                          {canSettleDebt && e.type === 'debt' && (
+                                          {canSettleDebt && isActiveDebt && (
                                             <button onClick={() => openIncreaseDebt(e)} style={{ background: 'none', border: '1px solid #8A6BA8', color: '#8A6BA8', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Add to debt</button>
                                           )}
                                           {canSettleDebt && ((isDirectSale && saleBalanceDue > 0.001) || (isActiveDebt && debtBalanceDue > 0.001)) && (
