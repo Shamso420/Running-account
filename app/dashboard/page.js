@@ -29,6 +29,8 @@ const emptyForm = () => ({
   quantity: '1',
   imei: '',
   serialNumber: '',
+  status: 'active',
+  soldPriceUsd: '',
 });
 
 function saleProfitUsd(e) {
@@ -498,6 +500,8 @@ export default function Dashboard() {
       quantity: entry.quantity != null ? String(entry.quantity) : '1',
       imei: entry.imei || '',
       serialNumber: entry.serial_number || '',
+      status: entry.status || 'active',
+      soldPriceUsd: entry.sold_usd != null ? String(entry.sold_usd) : '',
     });
     setEditingEntryId(entry.id);
     setFormError('');
@@ -520,6 +524,10 @@ export default function Dashboard() {
     if (form.type === 'sale' && (Number.isNaN(costAmt) || costAmt < 0)) { setFormError('Enter a cost (0 or more).'); return; }
     const saleQty = form.type === 'sale' ? parseFloat(form.quantity) : null;
     if (form.type === 'sale' && (!saleQty || saleQty <= 0)) { setFormError('Enter a quantity of 1 or more.'); return; }
+    const soldPriceUsd = form.type === 'investment' && form.status === 'sold' ? parseFloat(form.soldPriceUsd) : null;
+    if (form.type === 'investment' && form.status === 'sold' && (Number.isNaN(soldPriceUsd) || soldPriceUsd < 0)) {
+      setFormError('Enter a valid sold price (0 or more).'); return;
+    }
     setFormError('');
     setSaving(true);
     const { usd, lbp } = toUsdLbp(amt, form.currency);
@@ -534,6 +542,10 @@ export default function Dashboard() {
         };
       } else if (form.type === 'investment') {
         costFields = { supplier_text: form.supplier.trim(), imei: form.imei.trim(), serial_number: form.serialNumber.trim() };
+        if (form.status === 'sold') {
+          costFields.sold_usd = soldPriceUsd;
+          costFields.sold_lbp = soldPriceUsd * RATE;
+        }
       }
       const { data, error } = await supabase
         .from('entries')
@@ -556,6 +568,24 @@ export default function Dashboard() {
       setSaving(false);
       if (error) { setFormError('Could not save: ' + error.message); return; }
       setAllEntries((prev) => prev.map((en) => (en.id === data.id ? data : en)).sort((a, b) => b.entry_date.localeCompare(a.entry_date)));
+
+      if (data.type === 'investment' && data.status === 'sold' && data.linked_profit_entry_id) {
+        const newProfitUsd = Number(data.sold_usd) - Number(data.usd);
+        const { data: profitData, error: profitError } = await supabase
+          .from('entries')
+          .update({
+            usd: newProfitUsd, lbp: newProfitUsd * RATE, received_usd: newProfitUsd,
+            amount_raw: Math.max(Math.abs(newProfitUsd), 0.01),
+            notes: `${newProfitUsd >= 0 ? 'Profit' : 'Loss'} from sale of ${data.category}`,
+          })
+          .eq('id', data.linked_profit_entry_id)
+          .select()
+          .single();
+        if (!profitError && profitData) {
+          setAllEntries((prev) => prev.map((en) => (en.id === profitData.id ? profitData : en)).sort((a, b) => b.entry_date.localeCompare(a.entry_date)));
+        }
+      }
+
       setEditingEntryId(null);
       setForm(emptyForm());
       setTab('ledger');
@@ -1546,6 +1576,14 @@ export default function Dashboard() {
                       onChange={(e) => setForm((f) => ({ ...f, serialNumber: e.target.value }))} style={{ marginTop: 6 }} />
                   </label>
                 </div>
+              )}
+
+              {form.type === 'investment' && editingEntryId && form.status === 'sold' && (
+                <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                  Sold for (USD)
+                  <input type="number" step="any" min="0" placeholder="0" value={form.soldPriceUsd}
+                    onChange={(e) => setForm((f) => ({ ...f, soldPriceUsd: e.target.value }))} style={{ marginTop: 6 }} />
+                </label>
               )}
 
               {form.type !== 'investment' && is360Cell && (
