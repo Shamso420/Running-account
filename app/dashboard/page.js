@@ -2359,6 +2359,9 @@ export default function Dashboard() {
                           {GOAL_PERIODS.find((p) => p.key === g.period)?.label}
                         </div>
                         <h3 style={{ fontSize: 16 }}>{g.label}</h3>
+                        <div style={{ fontSize: 12, color: 'var(--slate)', marginTop: 2 }}>
+                          Tracking: {GOAL_METRICS.find((m) => m.key === g.metric)?.label || g.metric}
+                        </div>
                       </div>
                       {canEdit && <button onClick={() => deleteGoal(g.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 12 }}>Delete</button>}
                     </div>
@@ -2372,7 +2375,7 @@ export default function Dashboard() {
                     </div>
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
-                      <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600, color: g.met ? 'var(--green)' : 'var(--ink)' }}>
+                      <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600, color: g.met ? 'var(--green)' : g.achieved < 0 ? 'var(--coral)' : 'var(--ink)' }}>
                         {fmtUSD(g.achieved)}
                       </span>
                       <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: 'var(--slate)' }}>
