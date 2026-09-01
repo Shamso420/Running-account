@@ -150,31 +150,35 @@ const GOAL_METRICS = [
   { key: 'net', label: 'Net (income + gross profit − expenses)' },
 ];
 
-function localDateStr(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+function utcDateStr(d) {
+  return d.toISOString().slice(0, 10);
 }
 
+// Every entry_date in this app is stored as a UTC calendar-date string (via
+// new Date().toISOString().slice(0, 10)), so "today"/"this week"/"this
+// month" here must be computed in UTC too — otherwise, near midnight in a
+// timezone ahead of UTC (e.g. Beirut, UTC+3), a goal's window and a
+// just-saved entry's date can land on different calendar days, and the
+// entry silently falls outside the goal's period.
 function periodRange(period) {
   const now = new Date();
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   if (period === 'daily') {
-    const s = localDateStr(now);
+    const s = utcDateStr(today);
     return { start: s, end: s };
   }
   if (period === 'weekly') {
-    const day = now.getDay();
+    const day = today.getUTCDay();
     const diffToMonday = (day + 6) % 7;
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - diffToMonday);
+    const monday = new Date(today);
+    monday.setUTCDate(today.getUTCDate() - diffToMonday);
     const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    return { start: localDateStr(monday), end: localDateStr(sunday) };
+    sunday.setUTCDate(monday.getUTCDate() + 6);
+    return { start: utcDateStr(monday), end: utcDateStr(sunday) };
   }
-  const first = new Date(now.getFullYear(), now.getMonth(), 1);
-  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  return { start: localDateStr(first), end: localDateStr(last) };
+  const first = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+  const last = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0));
+  return { start: utcDateStr(first), end: utcDateStr(last) };
 }
 
 function computeAchieved(goal, entries) {
