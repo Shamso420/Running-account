@@ -244,6 +244,7 @@ export default function Dashboard() {
   const [allEntries, setAllEntries] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [customerModalOpen, setCustomerModalOpen] = useState(false);
+  const [customerPickerTarget, setCustomerPickerTarget] = useState('main');
   const [customerSearch, setCustomerSearch] = useState('');
   const [newCustomerName, setNewCustomerName] = useState('');
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
@@ -268,12 +269,12 @@ export default function Dashboard() {
   const [wageForm, setWageForm] = useState({ date: new Date().toISOString().slice(0, 10), description: '', amount: '', currency: 'LBP', frequency: 'monthly' });
   const [costError, setCostError] = useState('');
   const [savingCost, setSavingCost] = useState(false);
-  const [debtForm, setDebtForm] = useState({ date: new Date().toISOString().slice(0, 10), who: '', direction: 'owed_to_me', category: '', amount: '', currency: 'LBP', notes: '' });
+  const [debtForm, setDebtForm] = useState({ date: new Date().toISOString().slice(0, 10), who: '', customerId: null, direction: 'owed_to_me', category: '', amount: '', currency: 'LBP', notes: '' });
   const [debtFormError, setDebtFormError] = useState('');
   const [savingDebt, setSavingDebt] = useState(false);
   const [debtStartDate, setDebtStartDate] = useState(new Date().toISOString().slice(0, 10));
   const [debtEndDate, setDebtEndDate] = useState(new Date().toISOString().slice(0, 10));
-  const [partnerDebtForm, setPartnerDebtForm] = useState({ date: new Date().toISOString().slice(0, 10), who: '', direction: 'owed_to_me', category: '', amount: '', currency: 'LBP', notes: '' });
+  const [partnerDebtForm, setPartnerDebtForm] = useState({ date: new Date().toISOString().slice(0, 10), who: '', customerId: null, direction: 'owed_to_me', category: '', amount: '', currency: 'LBP', notes: '' });
   const [partnerDebtFormError, setPartnerDebtFormError] = useState('');
   const [savingPartnerDebt, setSavingPartnerDebt] = useState(false);
   const [partnerDebtStartDate, setPartnerDebtStartDate] = useState(new Date().toISOString().slice(0, 10));
@@ -420,14 +421,26 @@ export default function Dashboard() {
     if (typeof window !== 'undefined') sessionStorage.removeItem('rat_role');
   };
 
+  const openCustomerPicker = (target) => {
+    setCustomerPickerTarget(target);
+    setCustomerModalOpen(true);
+  };
+
   const selectCustomer = (customer) => {
-    setForm((f) => ({ ...f, where: `${customer.name} (${customer.code})`, customerId: customer.id }));
+    const label = `${customer.name} (${customer.code})`;
+    if (customerPickerTarget === 'debt') setDebtForm((f) => ({ ...f, who: label, customerId: customer.id }));
+    else if (customerPickerTarget === 'partnerDebt') setPartnerDebtForm((f) => ({ ...f, who: label, customerId: customer.id }));
+    else if (customerPickerTarget === 'sell') setSellForm((f) => ({ ...f, soldTo: label }));
+    else setForm((f) => ({ ...f, where: label, customerId: customer.id }));
     setCustomerModalOpen(false);
     setCustomerSearch('');
   };
 
-  const clearCustomer = () => {
-    setForm((f) => ({ ...f, where: '', customerId: null }));
+  const clearCustomer = (target) => {
+    if (target === 'debt') setDebtForm((f) => ({ ...f, who: '', customerId: null }));
+    else if (target === 'partnerDebt') setPartnerDebtForm((f) => ({ ...f, who: '', customerId: null }));
+    else if (target === 'sell') setSellForm((f) => ({ ...f, soldTo: '' }));
+    else setForm((f) => ({ ...f, where: '', customerId: null }));
   };
 
   const createCustomer = async () => {
@@ -971,13 +984,14 @@ export default function Dashboard() {
         usd, lbp,
         debt_direction: form.direction,
         debt_section: section,
+        customer_id: form.customerId || null,
       })
       .select()
       .single();
     setSaving(false);
     if (error) { setFormError('Could not save: ' + error.message); return; }
     setAllEntries((prev) => [data, ...prev].sort((a, b) => b.entry_date.localeCompare(a.entry_date)));
-    setForm((f) => ({ ...f, who: '', category: '', amount: '', notes: '' }));
+    setForm((f) => ({ ...f, who: '', category: '', amount: '', notes: '', customerId: null }));
   };
 
   const findInventoryMatch = (productName) => {
@@ -1567,7 +1581,34 @@ export default function Dashboard() {
                 </label>
               )}
 
-              {form.type === 'investment' && (
+              {form.type === 'investment' && is360Cell && (
+                <div>
+                  <div style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, marginBottom: 6 }}>
+                    Sold to (optional)
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <div style={{
+                      flex: 1, padding: '10px 12px', border: '1px solid var(--paper-line)', borderRadius: 4,
+                      fontSize: 14, color: form.where ? 'var(--ink)' : 'var(--slate)', background: 'var(--card)',
+                    }}>
+                      {form.where || 'No customer selected'}
+                    </div>
+                    <button type="button" onClick={() => openCustomerPicker('main')} style={{
+                      padding: '10px 14px', border: '1px solid var(--paper-line)', borderRadius: 4,
+                      background: 'transparent', color: 'var(--ink)', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap',
+                    }}>
+                      Select customer
+                    </button>
+                    {form.where && (
+                      <button type="button" onClick={() => clearCustomer('main')} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 18, padding: '0 4px' }}>
+                        ×
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {form.type === 'investment' && !is360Cell && (
                 <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
                   Sold to (optional)
                   <input placeholder="e.g. Karim" value={form.where}
@@ -1610,14 +1651,14 @@ export default function Dashboard() {
                     }}>
                       {form.where || 'No customer selected'}
                     </div>
-                    <button type="button" onClick={() => setCustomerModalOpen(true)} style={{
+                    <button type="button" onClick={() => openCustomerPicker('main')} style={{
                       padding: '10px 14px', border: '1px solid var(--paper-line)', borderRadius: 4,
                       background: 'transparent', color: 'var(--ink)', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap',
                     }}>
                       Select customer
                     </button>
                     {form.customerId && (
-                      <button type="button" onClick={clearCustomer} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 18, padding: '0 4px' }}>
+                      <button type="button" onClick={() => clearCustomer('main')} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 18, padding: '0 4px' }}>
                         ×
                       </button>
                     )}
@@ -2059,6 +2100,7 @@ export default function Dashboard() {
             openDebts={openDebts} settledDebts={settledDebts}
             canSettleDebt={canSettleDebt} onSettle={settleDebt} onIncreaseDebt={openIncreaseDebt} onRecordPayment={openRecordPayment}
             canDeleteEntry={canDeleteEntry} onEdit={startEditEntry} confirmDeleteId={confirmDeleteId} setConfirmDeleteId={setConfirmDeleteId} onDelete={deleteEntry}
+            is360Cell={is360Cell} onOpenCustomerPicker={() => openCustomerPicker('debt')} onClearCustomer={() => clearCustomer('debt')}
           />
         )}
 
@@ -2072,6 +2114,7 @@ export default function Dashboard() {
             openDebts={openPartnerDebts} settledDebts={settledPartnerDebts}
             canSettleDebt={canSettleDebt} onSettle={settleDebt} onIncreaseDebt={openIncreaseDebt} onRecordPayment={openRecordPayment}
             canDeleteEntry={canDeleteEntry} onEdit={startEditEntry} confirmDeleteId={confirmDeleteId} setConfirmDeleteId={setConfirmDeleteId} onDelete={deleteEntry}
+            is360Cell={is360Cell} onOpenCustomerPicker={() => openCustomerPicker('partnerDebt')} onClearCustomer={() => clearCustomer('partnerDebt')}
           />
         )}
 
@@ -2479,11 +2522,36 @@ export default function Dashboard() {
               Sale date
               <input type="date" value={sellForm.date} onChange={(e) => setSellForm((f) => ({ ...f, date: e.target.value }))} style={{ marginTop: 6 }} />
             </label>
-            <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, display: 'block', marginBottom: 14 }}>
-              Sold to (optional)
-              <input placeholder="e.g. Karim" value={sellForm.soldTo}
-                onChange={(e) => setSellForm((f) => ({ ...f, soldTo: e.target.value }))} style={{ marginTop: 6 }} />
-            </label>
+            {is360Cell ? (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, marginBottom: 6 }}>Sold to (optional)</div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div style={{
+                    flex: 1, padding: '10px 12px', border: '1px solid var(--paper-line)', borderRadius: 4,
+                    fontSize: 14, color: sellForm.soldTo ? 'var(--ink)' : 'var(--slate)', background: 'var(--card)',
+                  }}>
+                    {sellForm.soldTo || 'No customer selected'}
+                  </div>
+                  <button type="button" onClick={() => openCustomerPicker('sell')} style={{
+                    padding: '10px 14px', border: '1px solid var(--paper-line)', borderRadius: 4,
+                    background: 'transparent', color: 'var(--ink)', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap',
+                  }}>
+                    Select customer
+                  </button>
+                  {sellForm.soldTo && (
+                    <button type="button" onClick={() => clearCustomer('sell')} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 18, padding: '0 4px' }}>
+                      ×
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, display: 'block', marginBottom: 14 }}>
+                Sold to (optional)
+                <input placeholder="e.g. Karim" value={sellForm.soldTo}
+                  onChange={(e) => setSellForm((f) => ({ ...f, soldTo: e.target.value }))} style={{ marginTop: 6 }} />
+              </label>
+            )}
 
             {sellForm.amount && !Number.isNaN(parseFloat(sellForm.amount)) && (
               (() => {
@@ -3115,6 +3183,7 @@ function DebtsSection({
   openDebts, settledDebts,
   canSettleDebt, onSettle, onIncreaseDebt, onRecordPayment,
   canDeleteEntry, onEdit, confirmDeleteId, setConfirmDeleteId, onDelete,
+  is360Cell, onOpenCustomerPicker, onClearCustomer,
 }) {
   const [openDebtsFilter, setOpenDebtsFilter] = useState('all');
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -3156,10 +3225,35 @@ function DebtsSection({
               Date
               <input type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} style={{ marginTop: 6 }} />
             </label>
-            <label style={{ flex: 1, minWidth: 160, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
-              {addPersonLabel}
-              <input value={form.who} onChange={(e) => setForm((f) => ({ ...f, who: e.target.value }))} style={{ marginTop: 6 }} />
-            </label>
+            {is360Cell ? (
+              <div style={{ flex: 1, minWidth: 220 }}>
+                <div style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, marginBottom: 6 }}>{addPersonLabel}</div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div style={{
+                    flex: 1, padding: '10px 12px', border: '1px solid var(--paper-line)', borderRadius: 4,
+                    fontSize: 14, color: form.customerId ? 'var(--ink)' : 'var(--slate)', background: 'var(--card)',
+                  }}>
+                    {form.who || 'No customer selected'}
+                  </div>
+                  <button type="button" onClick={onOpenCustomerPicker} style={{
+                    padding: '10px 14px', border: '1px solid var(--paper-line)', borderRadius: 4,
+                    background: 'transparent', color: 'var(--ink)', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap',
+                  }}>
+                    Select customer
+                  </button>
+                  {form.customerId && (
+                    <button type="button" onClick={onClearCustomer} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 18, padding: '0 4px' }}>
+                      ×
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <label style={{ flex: 1, minWidth: 160, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                {addPersonLabel}
+                <input value={form.who} onChange={(e) => setForm((f) => ({ ...f, who: e.target.value }))} style={{ marginTop: 6 }} />
+              </label>
+            )}
             <div style={{ display: 'flex', gap: 6 }}>
               {[
                 { key: 'owed_to_me', label: 'Owed to me' },
