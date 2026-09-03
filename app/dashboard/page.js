@@ -303,6 +303,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('add');
   const [form, setForm] = useState(emptyForm());
+  const [extraSaleItems, setExtraSaleItems] = useState([]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [editingEntryId, setEditingEntryId] = useState(null);
@@ -536,7 +537,20 @@ export default function Dashboard() {
   const cancelEditEntry = () => {
     setEditingEntryId(null);
     setForm(emptyForm());
+    setExtraSaleItems([]);
     setFormError('');
+  };
+
+  const addExtraSaleItem = () => {
+    setExtraSaleItems((prev) => [...prev, { product: '', quantity: '1', cost: '', price: '' }]);
+  };
+
+  const updateExtraSaleItem = (index, field, value) => {
+    setExtraSaleItems((prev) => prev.map((item, i) => (i === index ? { ...item, [field]: value } : item)));
+  };
+
+  const removeExtraSaleItem = (index) => {
+    setExtraSaleItems((prev) => prev.filter((_, i) => i !== index));
   };
 
   const addEntry = async (e) => {
@@ -552,6 +566,20 @@ export default function Dashboard() {
     const soldPriceUsd = form.type === 'investment' && form.status === 'sold' ? parseFloat(form.soldPriceUsd) : null;
     if (form.type === 'investment' && form.status === 'sold' && (Number.isNaN(soldPriceUsd) || soldPriceUsd < 0)) {
       setFormError('Enter a valid sold price (0 or more).'); return;
+    }
+    const parsedExtraItems = (!editingEntryId && form.type === 'sale')
+      ? extraSaleItems.map((item) => ({
+          product: item.product.trim(),
+          quantity: parseFloat(item.quantity),
+          cost: parseFloat(item.cost),
+          price: parseFloat(item.price),
+        }))
+      : [];
+    for (const item of parsedExtraItems) {
+      if (!item.product) { setFormError('Enter a product for each additional item.'); return; }
+      if (!item.quantity || item.quantity <= 0) { setFormError('Enter a quantity of 1 or more for each additional item.'); return; }
+      if (Number.isNaN(item.cost) || item.cost < 0) { setFormError('Enter a cost (0 or more) for each additional item.'); return; }
+      if (!item.price || item.price <= 0) { setFormError('Enter a selling price for each additional item.'); return; }
     }
     setFormError('');
     setSaving(true);
@@ -674,6 +702,47 @@ export default function Dashboard() {
         .single();
       if (paymentRow) setSalePayments((prev) => [paymentRow, ...prev]);
     }
+    for (const item of parsedExtraItems) {
+      const { usd: itemUsd, lbp: itemLbp } = toUsdLbp(item.price, form.currency);
+      const { usd: itemCostUsd, lbp: itemCostLbp } = toUsdLbp(item.cost, form.currency);
+      const { data: itemData, error: itemError } = await supabase
+        .from('entries')
+        .insert({
+          user_id: session.user.id,
+          entry_date: form.date,
+          type: 'sale',
+          category: form.category.trim(),
+          where_text: form.where.trim(),
+          notes: form.notes.trim(),
+          currency: form.currency,
+          amount_raw: item.price,
+          usd: itemUsd, lbp: itemLbp,
+          customer_id: form.customerId || null,
+          private: useRoles && role === 'admin' ? !!form.private : false,
+          product: item.product, cost_raw: item.cost, cost_usd: itemCostUsd, cost_lbp: itemCostLbp,
+          received_usd: itemUsd, supplier_text: form.supplier.trim(), payment_method: form.paymentMethod, quantity: item.quantity,
+        })
+        .select()
+        .single();
+      if (itemError || !itemData) continue;
+      setAllEntries((prev) => [itemData, ...prev].sort((a, b) => b.entry_date.localeCompare(a.entry_date)));
+      await deductInventoryForSale(item.product, item.quantity);
+      const { data: itemPaymentRow } = await supabase
+        .from('sale_payments')
+        .insert({
+          user_id: session.user.id,
+          entry_id: itemData.id,
+          payment_date: form.date,
+          amount_raw: item.price,
+          currency: form.currency,
+          usd: itemUsd, lbp: itemLbp,
+          payment_method: form.paymentMethod,
+        })
+        .select()
+        .single();
+      if (itemPaymentRow) setSalePayments((prev) => [itemPaymentRow, ...prev]);
+    }
+    setExtraSaleItems([]);
     setForm((f) => ({ ...emptyForm(), type: f.type, currency: f.currency }));
   };
 
@@ -1480,7 +1549,7 @@ export default function Dashboard() {
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {(is360Cell ? TYPES : TYPES.filter((t) => t.key !== 'sale')).map((t) => (
                   <button type="button" key={t.key} disabled={!!editingEntryId}
-                    onClick={() => setForm((f) => ({ ...f, type: t.key, category: '', product: '', cost: '', receivedNow: '', supplier: '', paymentMethod: 'Cash', quantity: '1', imei: '', serialNumber: '' }))} style={{
+                    onClick={() => { setForm((f) => ({ ...f, type: t.key, category: '', product: '', cost: '', receivedNow: '', supplier: '', paymentMethod: 'Cash', quantity: '1', imei: '', serialNumber: '' })); setExtraSaleItems([]); }} style={{
                     padding: '8px 14px', borderRadius: 20, cursor: editingEntryId ? 'default' : 'pointer',
                     border: `1.5px solid ${form.type === t.key ? t.color : 'var(--paper-line)'}`,
                     background: form.type === t.key ? t.color + '1a' : 'transparent',
@@ -1727,6 +1796,43 @@ export default function Dashboard() {
                         </div>
                       );
                     })()
+                  )}
+
+                  {!editingEntryId && (
+                    <div style={{ borderTop: '1px solid var(--paper-line)', paddingTop: 14, marginTop: 4 }}>
+                      <div style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, marginBottom: 8 }}>
+                        Sold this customer more than one thing? Add each extra item here — same date, customer, and payment method, one invoice.
+                      </div>
+                      {extraSaleItems.map((item, i) => (
+                        <div key={i} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 8 }}>
+                          <label style={{ flex: 2, minWidth: 140, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                            Product
+                            <input value={item.product} onChange={(e) => updateExtraSaleItem(i, 'product', e.target.value)} style={{ marginTop: 6 }} />
+                          </label>
+                          <label style={{ width: 70, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                            Qty
+                            <input type="number" step="1" min="1" value={item.quantity} onChange={(e) => updateExtraSaleItem(i, 'quantity', e.target.value)} style={{ marginTop: 6 }} />
+                          </label>
+                          <label style={{ width: 90, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                            Cost
+                            <input type="number" step="any" min="0" placeholder="0" value={item.cost} onChange={(e) => updateExtraSaleItem(i, 'cost', e.target.value)} style={{ marginTop: 6 }} />
+                          </label>
+                          <label style={{ width: 90, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                            Price
+                            <input type="number" step="any" min="0" placeholder="0" value={item.price} onChange={(e) => updateExtraSaleItem(i, 'price', e.target.value)} style={{ marginTop: 6 }} />
+                          </label>
+                          <button type="button" onClick={() => removeExtraSaleItem(i)} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 18, padding: '8px 4px', cursor: 'pointer' }}>
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                      <button type="button" onClick={addExtraSaleItem} style={{
+                        padding: '8px 14px', border: '1px solid var(--paper-line)', borderRadius: 4,
+                        background: 'transparent', color: 'var(--ink)', fontWeight: 600, fontSize: 13,
+                      }}>
+                        + Add another item
+                      </button>
+                    </div>
                   )}
                 </>
               )}
