@@ -33,6 +33,34 @@ const emptyForm = () => ({
   soldPriceUsd: '',
 });
 
+function getDeviceId() {
+  if (typeof window === 'undefined') return null;
+  let id = window.localStorage.getItem('rat_device_id');
+  if (!id) {
+    id = crypto.randomUUID();
+    window.localStorage.setItem('rat_device_id', id);
+  }
+  return id;
+}
+
+function guessDeviceName() {
+  if (typeof navigator === 'undefined') return 'Unknown device';
+  const ua = navigator.userAgent;
+  let platform = 'Device';
+  if (/iPhone/.test(ua)) platform = 'iPhone';
+  else if (/iPad/.test(ua)) platform = 'iPad';
+  else if (/Android/.test(ua)) platform = 'Android';
+  else if (/Macintosh/.test(ua)) platform = 'Mac';
+  else if (/Windows/.test(ua)) platform = 'Windows';
+  else if (/Linux/.test(ua)) platform = 'Linux';
+  let browser = 'Browser';
+  if (/Edg\//.test(ua)) browser = 'Edge';
+  else if (/Chrome\//.test(ua) && !/Chromium/.test(ua)) browser = 'Chrome';
+  else if (/Safari\//.test(ua) && !/Chrome/.test(ua)) browser = 'Safari';
+  else if (/Firefox\//.test(ua)) browser = 'Firefox';
+  return `${platform} · ${browser}`;
+}
+
 function saleProfitUsd(e) {
   return Number(e.usd) - Number(e.cost_usd || 0);
 }
@@ -187,15 +215,14 @@ function computeAchieved(goal, entries) {
   const income = relevant.filter((e) => e.type === 'income').reduce((s, e) => s + Number(e.usd), 0);
   const expenses = relevant.filter((e) => e.type === 'expense').reduce((s, e) => s + Number(e.usd), 0);
 
-  // Gross profit here matches the Report/Monthly tabs exactly: sales profit,
-  // plus investments — counted as a cost in the period bought, or as
-  // revenue+profit in the period sold (never both, so an unsold purchase
-  // isn't double-counted once it later sells).
+  // Sales profit, plus investments — but unlike Report/Monthly, an unsold
+  // investment purchase doesn't count against a goal at all (buying stock
+  // isn't a loss). Only sold investments count, as profit/loss in the
+  // period they were sold.
   const periodSales = relevant.filter((e) => e.type === 'sale' && e.product);
   const periodInvestments = entries.filter((e) => {
-    if (e.type !== 'investment') return false;
-    const d = e.status === 'sold' ? e.sold_date : e.entry_date;
-    return d >= start && d <= end;
+    if (e.type !== 'investment' || e.status !== 'sold') return false;
+    return e.sold_date >= start && e.sold_date <= end;
   });
   const grossProfit = periodSales.reduce((s, e) => s + saleProfitUsd(e), 0)
     + periodInvestments.reduce((s, e) => {
@@ -231,6 +258,10 @@ export default function Dashboard() {
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
   const [checkingPin, setCheckingPin] = useState(false);
+  const [deviceStatus, setDeviceStatus] = useState('checking'); // 'checking' | 'approved' | 'pending'
+  const [devices, setDevices] = useState([]);
+  const [devicesLoading, setDevicesLoading] = useState(false);
+  const [deviceActionError, setDeviceActionError] = useState('');
 
   const canEdit = !useRoles || role === 'admin';
   const canAdd = !useRoles || role === 'admin' || role === 'entry';
@@ -280,7 +311,8 @@ export default function Dashboard() {
   const [partnerDebtStartDate, setPartnerDebtStartDate] = useState(new Date().toISOString().slice(0, 10));
   const [partnerDebtEndDate, setPartnerDebtEndDate] = useState(new Date().toISOString().slice(0, 10));
   const [inventoryItems, setInventoryItems] = useState([]);
-  const [invForm, setInvForm] = useState({ productName: '', quantity: '', notes: '', unitCost: '' });
+  const [invForm, setInvForm] = useState({ productName: '', quantity: '', notes: '', unitCost: '', serialNumber: '', imei: '' });
+  const [printingInvItem, setPrintingInvItem] = useState(null);
   const [invError, setInvError] = useState('');
   const [savingInv, setSavingInv] = useState(false);
   const [confirmDeleteInvId, setConfirmDeleteInvId] = useState(null);
@@ -340,6 +372,34 @@ export default function Dashboard() {
     if (!session) return;
     (async () => {
       setLoading(true);
+
+      const deviceId = getDeviceId();
+      let deviceApproved = true;
+      if (deviceId) {
+        const { data: existingDevices } = await supabase
+          .from('approved_devices')
+          .select('*')
+          .eq('user_id', session.user.id);
+        const mine = (existingDevices || []).find((d) => d.device_id === deviceId);
+        if (mine) {
+          deviceApproved = mine.approved;
+          supabase.from('approved_devices').update({ last_seen_at: new Date().toISOString() }).eq('id', mine.id).then(() => {});
+        } else {
+          deviceApproved = (existingDevices || []).length === 0;
+          await supabase.from('approved_devices').insert({
+            user_id: session.user.id,
+            device_id: deviceId,
+            device_name: guessDeviceName(),
+            approved: deviceApproved,
+          });
+        }
+      }
+      setDeviceStatus(deviceApproved ? 'approved' : 'pending');
+      if (!deviceApproved) {
+        setLoading(false);
+        return;
+      }
+
       const { data: profile } = await supabase
         .from('profiles')
         .select('is_admin, plan, use_roles')
@@ -420,6 +480,32 @@ export default function Dashboard() {
     setPinInput('');
     setPinError('');
     if (typeof window !== 'undefined') sessionStorage.removeItem('rat_role');
+  };
+
+  const loadDevices = async () => {
+    if (!session) return;
+    setDevicesLoading(true);
+    const { data } = await supabase
+      .from('approved_devices')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .order('created_at', { ascending: true });
+    setDevices(data || []);
+    setDevicesLoading(false);
+  };
+
+  const setDeviceApproval = async (id, approved) => {
+    setDeviceActionError('');
+    const { error } = await supabase.from('approved_devices').update({ approved }).eq('id', id);
+    if (error) { setDeviceActionError(error.message); return; }
+    loadDevices();
+  };
+
+  const removeDevice = async (id) => {
+    setDeviceActionError('');
+    const { error } = await supabase.from('approved_devices').delete().eq('id', id);
+    if (error) { setDeviceActionError(error.message); return; }
+    loadDevices();
   };
 
   const openCustomerPicker = (target) => {
@@ -1093,14 +1179,17 @@ export default function Dashboard() {
     } else {
       const { data, error } = await supabase
         .from('inventory')
-        .insert({ user_id: session.user.id, product_name: name, quantity: qty, notes: invForm.notes.trim(), unit_cost: unitCost })
+        .insert({
+          user_id: session.user.id, product_name: name, quantity: qty, notes: invForm.notes.trim(), unit_cost: unitCost,
+          serial_number: invForm.serialNumber.trim() || null, imei: invForm.imei.trim() || null,
+        })
         .select()
         .single();
       setSavingInv(false);
       if (error) { setInvError('Could not save: ' + error.message); return; }
       setInventoryItems((prev) => [...prev, data].sort((a, b) => a.product_name.localeCompare(b.product_name)));
     }
-    setInvForm({ productName: '', quantity: '', notes: '', unitCost: '' });
+    setInvForm({ productName: '', quantity: '', notes: '', unitCost: '', serialNumber: '', imei: '' });
   };
 
   const deleteInventoryItem = async (id) => {
@@ -1111,7 +1200,11 @@ export default function Dashboard() {
 
   const beginEditInventory = (item) => {
     setEditingInvId(item.id);
-    setEditInvForm({ productName: item.product_name, quantity: String(item.quantity), notes: item.notes || '', unitCost: item.unit_cost != null ? String(item.unit_cost) : '' });
+    setEditInvForm({
+      productName: item.product_name, quantity: String(item.quantity), notes: item.notes || '',
+      unitCost: item.unit_cost != null ? String(item.unit_cost) : '',
+      serialNumber: item.serial_number || '', imei: item.imei || '',
+    });
     setEditInvError('');
   };
 
@@ -1132,7 +1225,10 @@ export default function Dashboard() {
     setSavingInvEdit(true);
     const { data, error } = await supabase
       .from('inventory')
-      .update({ product_name: name, quantity: qty, notes: editInvForm.notes.trim(), unit_cost: unitCost })
+      .update({
+        product_name: name, quantity: qty, notes: editInvForm.notes.trim(), unit_cost: unitCost,
+        serial_number: editInvForm.serialNumber.trim() || null, imei: editInvForm.imei.trim() || null,
+      })
       .eq('id', editingInvId)
       .select()
       .single();
@@ -1419,8 +1515,41 @@ export default function Dashboard() {
     if (!loading && !is360Cell && OTHER_ACCOUNT_RESTRICTED_TABS.includes(tab)) setTab('ledger');
   }, [is360Cell, loading, tab]);
 
+  useEffect(() => {
+    if (!loading && !canEdit && tab === 'devices') setTab('ledger');
+  }, [canEdit, loading, tab]);
+
+  useEffect(() => {
+    if (tab === 'devices') loadDevices();
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (session === undefined || loading) {
     return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading…</div>;
+  }
+
+  if (deviceStatus === 'pending') {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div style={{ maxWidth: 380, width: '100%', border: '1px solid var(--paper-line)', borderRadius: 6, padding: 28, background: 'var(--card)' }}>
+          <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: '0.14em', color: 'var(--coral)', textTransform: 'uppercase', marginBottom: 8 }}>
+            Device pending approval
+          </div>
+          <h1 style={{ fontSize: 22, marginBottom: 6 }}>This device isn&apos;t approved yet</h1>
+          <p style={{ color: 'var(--slate)', fontSize: 13, marginTop: 0, marginBottom: 20 }}>
+            For security, this account only opens on devices an admin has approved. Ask an admin to approve this device from the Devices screen, then reload this page.
+          </p>
+          <button onClick={() => window.location.reload()} style={{
+            padding: '11px 16px', border: 'none', borderRadius: 4, width: '100%',
+            background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600, marginBottom: 12, cursor: 'pointer',
+          }}>
+            I&apos;ve been approved — reload
+          </button>
+          <button onClick={signOut} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 12, textDecoration: 'underline' }}>
+            Sign out
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (useRoles && !role) {
@@ -1462,7 +1591,7 @@ export default function Dashboard() {
 
   return (
     <div style={{ minHeight: '100vh' }}>
-    {invoiceEntries.length === 0 && (
+    {invoiceEntries.length === 0 && !printingInvItem && (
     <>
       <div style={{ height: 4, background: is360Cell ? 'linear-gradient(90deg, #1F5FA8, #76C0E7)' : 'linear-gradient(90deg, #3F6E52, #B8894C, #B0463F, #4C7A9E)' }} />
       <header style={{ borderBottom: '1px solid var(--paper-line)', padding: '26px 24px 18px' }}>
@@ -1511,6 +1640,7 @@ export default function Dashboard() {
             ...(is360Cell ? [{ key: 'inventory', label: 'Inventory' }] : []),
             ...(is360Cell ? [{ key: 'journal', label: 'Journal' }] : []),
             ...(is360Cell && plan === 'business' ? [{ key: 'goals', label: 'Goals' }] : []),
+            ...(canEdit ? [{ key: 'devices', label: 'Devices' }] : []),
           ].map((t) => (
             <button key={t.key} onClick={() => { if (t.key === 'add') cancelEditEntry(); setTab(t.key); }} style={{
               padding: '9px 16px', border: 'none', cursor: 'pointer',
@@ -2255,6 +2385,16 @@ export default function Dashboard() {
                     <input type="number" step="any" min="0" placeholder="0" value={invForm.unitCost}
                       onChange={(e) => setInvForm((f) => ({ ...f, unitCost: e.target.value }))} style={{ marginTop: 6 }} />
                   </label>
+                  <label style={{ width: 160, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                    Serial number (optional)
+                    <input placeholder="e.g. SN12345678" value={invForm.serialNumber}
+                      onChange={(e) => setInvForm((f) => ({ ...f, serialNumber: e.target.value }))} style={{ marginTop: 6 }} />
+                  </label>
+                  <label style={{ width: 160, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                    IMEI (optional)
+                    <input placeholder="e.g. 356938035643809" value={invForm.imei}
+                      onChange={(e) => setInvForm((f) => ({ ...f, imei: e.target.value }))} style={{ marginTop: 6 }} />
+                  </label>
                   <button type="button" onClick={addInventoryItem} disabled={savingInv} style={{
                     padding: '10px 18px', border: 'none', borderRadius: 4,
                     background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600, opacity: savingInv ? 0.6 : 1,
@@ -2263,7 +2403,7 @@ export default function Dashboard() {
                   </button>
                 </div>
                 <p style={{ fontSize: 12, color: 'var(--slate)', margin: '10px 0 0' }}>
-                  If the product name already exists, this adds to its current stock instead of creating a duplicate. Leave cost blank to keep the existing cost, or enter one to update it.
+                  If the product name already exists, this adds to its current stock instead of creating a duplicate. Leave cost blank to keep the existing cost, or enter one to update it. Serial number and IMEI are best used for single-unit items (quantity 1) — restocking an existing product won&apos;t change them.
                 </p>
                 {invError && <div style={{ color: 'var(--coral)', fontSize: 13, marginTop: 10 }}>{invError}</div>}
               </ChartCard>
@@ -2303,7 +2443,9 @@ export default function Dashboard() {
                           {editingInvId === i.id ? (
                             <>
                               <td>
-                                <input value={editInvForm.productName} onChange={(e) => setEditInvForm((f) => ({ ...f, productName: e.target.value }))} style={{ width: 160 }} />
+                                <input value={editInvForm.productName} onChange={(e) => setEditInvForm((f) => ({ ...f, productName: e.target.value }))} style={{ width: 160, marginBottom: 4 }} />
+                                <input placeholder="Serial number" value={editInvForm.serialNumber} onChange={(e) => setEditInvForm((f) => ({ ...f, serialNumber: e.target.value }))} style={{ width: 160, fontSize: 11, marginBottom: 4 }} />
+                                <input placeholder="IMEI" value={editInvForm.imei} onChange={(e) => setEditInvForm((f) => ({ ...f, imei: e.target.value }))} style={{ width: 160, fontSize: 11 }} />
                               </td>
                               <td>
                                 <input type="number" step="1" value={editInvForm.quantity} onChange={(e) => setEditInvForm((f) => ({ ...f, quantity: e.target.value }))} style={{ width: 80 }} />
@@ -2327,13 +2469,23 @@ export default function Dashboard() {
                             </>
                           ) : (
                             <>
-                              <td>{i.product_name}</td>
+                              <td>
+                                {i.product_name}
+                                {(i.serial_number || i.imei) && (
+                                  <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 2 }}>
+                                    {i.serial_number && <>S/N {i.serial_number}</>}
+                                    {i.serial_number && i.imei && ' · '}
+                                    {i.imei && <>IMEI {i.imei}</>}
+                                  </div>
+                                )}
+                              </td>
                               <td style={{ fontFamily: "'IBM Plex Mono', monospace", color: stockColor, fontWeight: 600 }}>{qty}</td>
                               <td style={{ color: 'var(--slate)' }}>{i.notes || '—'}</td>
                               <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{i.unit_cost != null ? fmtUSD(i.unit_cost) : '—'}</td>
                               <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{i.unit_cost != null ? fmtUSD(qty * Number(i.unit_cost)) : '—'}</td>
                               <td>
                                 <span style={{ display: 'flex', gap: 6 }}>
+                                  {i.unit_cost != null && <button onClick={() => setPrintingInvItem(i)} style={{ background: 'none', border: '1px solid var(--paper-line)', color: 'var(--ink)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Print</button>}
                                   {canDeleteEntry && <button onClick={() => beginEditInventory(i)} style={{ background: 'none', border: '1px solid var(--paper-line)', color: 'var(--ink)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Edit</button>}
                                   {canDeleteEntry && (confirmDeleteInvId === i.id ? (
                                     <span style={{ display: 'flex', gap: 6 }}>
@@ -2598,6 +2750,58 @@ export default function Dashboard() {
                 </button>
               </form>
             </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'devices' && canEdit && (
+          <div style={{ maxWidth: 640 }}>
+            <p style={{ color: 'var(--slate)', fontSize: 14, marginTop: 0, marginBottom: 24 }}>
+              Only approved devices can sign in to this account. The first device ever used was approved automatically — approve or revoke every device after that.
+            </p>
+
+            {deviceActionError && (
+              <div style={{ color: 'var(--coral)', fontSize: 13, marginBottom: 16 }}>{deviceActionError}</div>
+            )}
+
+            {devicesLoading ? (
+              <div style={{ color: 'var(--slate)', fontSize: 14 }}>Loading…</div>
+            ) : devices.length === 0 ? (
+              <div style={{ color: 'var(--slate)', fontSize: 14 }}>No devices yet.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {devices.map((d) => {
+                  const isThisDevice = d.device_id === getDeviceId();
+                  return (
+                    <div key={d.id} style={{ border: '1px solid var(--paper-line)', borderRadius: 4, padding: 14, background: 'var(--card)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>
+                          {d.device_name || 'Unknown device'}
+                          {isThisDevice && <span style={{ color: 'var(--gold)', fontWeight: 500 }}> · this device</span>}
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--slate)', marginTop: 2 }}>
+                          {d.approved ? 'Approved' : 'Pending approval'} · first seen {new Date(d.created_at).toLocaleDateString()} · last seen {new Date(d.last_seen_at).toLocaleDateString()}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {!d.approved && (
+                          <button onClick={() => setDeviceApproval(d.id, true)} style={{ padding: '7px 14px', border: 'none', borderRadius: 4, background: 'var(--green)', color: 'var(--paper)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+                            Approve
+                          </button>
+                        )}
+                        {d.approved && !isThisDevice && (
+                          <button onClick={() => setDeviceApproval(d.id, false)} style={{ padding: '7px 14px', border: '1px solid var(--coral)', borderRadius: 4, background: 'transparent', color: 'var(--coral)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+                            Revoke
+                          </button>
+                        )}
+                        <button onClick={() => removeDevice(d.id)} style={{ padding: '7px 14px', border: 'none', background: 'transparent', color: 'var(--slate)', fontSize: 13, cursor: 'pointer' }}>
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         )}
@@ -3041,6 +3245,121 @@ export default function Dashboard() {
             </div>
 
             {/* Bottom diagonal accent */}
+            <div style={{
+              height: 26,
+              background: 'linear-gradient(120deg, #cdeee3 0%, #a9d9dd 55%, #8fcbe0 100%)',
+              clipPath: 'polygon(0 40%, 100% 0, 100% 100%, 0 100%)',
+            }} />
+          </div>
+        </div>
+      )}
+
+      {printingInvItem && (
+        <div className="inv-print-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(28,43,57,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, padding: 20 }}>
+          <style>{`
+            @media print {
+              @page { margin: 10mm; }
+              html, body { height: auto !important; }
+              body * { visibility: hidden; }
+              .inv-print-card, .inv-print-card * { visibility: visible; }
+              .inv-print-card {
+                position: static !important; margin: 0 !important; box-shadow: none !important; border-radius: 0 !important;
+                width: 100% !important; max-width: 100% !important; max-height: none !important; overflow: visible !important;
+              }
+              .inv-print-overlay { position: static !important; background: none !important; padding: 0 !important; display: block !important; }
+              .no-print { display: none !important; }
+              * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+            }
+          `}</style>
+          <div className="inv-print-card" style={{
+            background: '#fff', width: '100%', maxWidth: 560, maxHeight: '92vh', overflowY: 'auto',
+            borderRadius: 6, position: 'relative', boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
+          }}>
+            <div style={{ position: 'relative', padding: '32px 36px 26px' }}>
+              <div style={{
+                position: 'absolute', inset: 0, zIndex: 0,
+                background: 'linear-gradient(120deg, #cdeee3 0%, #a9d9dd 55%, #8fcbe0 100%)',
+                clipPath: 'polygon(0 0, 100% 0, 100% 78%, 0 100%)',
+              }} />
+              <div style={{ position: 'relative', zIndex: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <h1 style={{ fontSize: 26, fontWeight: 800, color: '#12202b', letterSpacing: '0.01em' }}>COST RECORD</h1>
+                    <div style={{ fontSize: 11, color: '#12202b', opacity: 0.7, marginTop: 2 }}>Internal record of what this item cost — not for the customer</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    {is360Cell ? (
+                      <img src="/logo-360cell.png" alt="360 Cell" style={{ height: 40, width: 'auto', borderRadius: 5, marginLeft: 'auto' }} />
+                    ) : (
+                      <div style={{ fontFamily: "'Source Serif 4', serif", fontStyle: 'italic', fontWeight: 700, fontSize: 19, color: '#12202b' }}>
+                        The Running Account
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 48, marginTop: 22 }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: '#12202b' }}>DATE ADDED</div>
+                    <div style={{ fontSize: 14, color: '#12202b', marginTop: 2 }}>{invoiceDateStr(String(printingInvItem.created_at).slice(0, 10))}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: '#12202b' }}>RECORD NO</div>
+                    <div style={{ fontSize: 14, color: '#12202b', marginTop: 2 }}>{`INV-${String(printingInvItem.created_at).slice(0, 10).replace(/-/g, '')}-${printingInvItem.id.slice(0, 6).toUpperCase()}`}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ padding: '10px 36px 30px' }}>
+              <table style={{ width: '100%', marginTop: 18, borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid #12202b' }}>
+                    <th style={{ textAlign: 'left', fontSize: 11, fontWeight: 800, color: '#1c6b52', padding: '0 0 8px' }}>ITEM</th>
+                    <th style={{ textAlign: 'right', fontSize: 11, fontWeight: 800, color: '#1c6b52', padding: '0 0 8px' }}>QTY</th>
+                    <th style={{ textAlign: 'right', fontSize: 11, fontWeight: 800, color: '#1c6b52', padding: '0 0 8px' }}>UNIT COST</th>
+                    <th style={{ textAlign: 'right', fontSize: 11, fontWeight: 800, color: '#1c6b52', padding: '0 0 8px' }}>TOTAL COST</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b' }}>
+                      {printingInvItem.product_name}
+                      {printingInvItem.notes ? ` — ${printingInvItem.notes}` : ''}
+                      {(printingInvItem.serial_number || printingInvItem.imei) && (
+                        <div style={{ fontSize: 11, color: '#4a5a66', marginTop: 3 }}>
+                          {printingInvItem.serial_number && <>S/N {printingInvItem.serial_number}</>}
+                          {printingInvItem.serial_number && printingInvItem.imei && ' · '}
+                          {printingInvItem.imei && <>IMEI {printingInvItem.imei}</>}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b', textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace" }}>{Number(printingInvItem.quantity)}</td>
+                    <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b', textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(printingInvItem.unit_cost)}</td>
+                    <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b', textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(Number(printingInvItem.quantity) * Number(printingInvItem.unit_cost))}</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 26 }}>
+                <div style={{ width: 220 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: 15, fontWeight: 700, borderTop: '1px solid #12202b' }}>
+                    <span>Total cost</span>
+                    <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(Number(printingInvItem.quantity) * Number(printingInvItem.unit_cost))}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="no-print" style={{ display: 'flex', gap: 10, marginTop: 30 }}>
+                <button onClick={() => setPrintingInvItem(null)} style={{ flex: 1, padding: '11px 16px', border: '1px solid var(--paper-line)', borderRadius: 4, background: 'transparent', color: 'var(--slate)', fontWeight: 600 }}>
+                  Close
+                </button>
+                <button onClick={() => window.print()} style={{ flex: 1, padding: '11px 16px', border: 'none', borderRadius: 4, background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600 }}>
+                  Print / Save as PDF
+                </button>
+              </div>
+            </div>
+
             <div style={{
               height: 26,
               background: 'linear-gradient(120deg, #cdeee3 0%, #a9d9dd 55%, #8fcbe0 100%)',
