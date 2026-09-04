@@ -215,15 +215,14 @@ function computeAchieved(goal, entries) {
   const income = relevant.filter((e) => e.type === 'income').reduce((s, e) => s + Number(e.usd), 0);
   const expenses = relevant.filter((e) => e.type === 'expense').reduce((s, e) => s + Number(e.usd), 0);
 
-  // Gross profit here matches the Report/Monthly tabs exactly: sales profit,
-  // plus investments — counted as a cost in the period bought, or as
-  // revenue+profit in the period sold (never both, so an unsold purchase
-  // isn't double-counted once it later sells).
+  // Sales profit, plus investments — but unlike Report/Monthly, an unsold
+  // investment purchase doesn't count against a goal at all (buying stock
+  // isn't a loss). Only sold investments count, as profit/loss in the
+  // period they were sold.
   const periodSales = relevant.filter((e) => e.type === 'sale' && e.product);
   const periodInvestments = entries.filter((e) => {
-    if (e.type !== 'investment') return false;
-    const d = e.status === 'sold' ? e.sold_date : e.entry_date;
-    return d >= start && d <= end;
+    if (e.type !== 'investment' || e.status !== 'sold') return false;
+    return e.sold_date >= start && e.sold_date <= end;
   });
   const grossProfit = periodSales.reduce((s, e) => s + saleProfitUsd(e), 0)
     + periodInvestments.reduce((s, e) => {
