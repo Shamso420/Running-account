@@ -311,7 +311,8 @@ export default function Dashboard() {
   const [partnerDebtStartDate, setPartnerDebtStartDate] = useState(new Date().toISOString().slice(0, 10));
   const [partnerDebtEndDate, setPartnerDebtEndDate] = useState(new Date().toISOString().slice(0, 10));
   const [inventoryItems, setInventoryItems] = useState([]);
-  const [invForm, setInvForm] = useState({ productName: '', quantity: '', notes: '', unitCost: '' });
+  const [invForm, setInvForm] = useState({ productName: '', quantity: '', notes: '', unitCost: '', serialNumber: '', imei: '' });
+  const [printingInvItem, setPrintingInvItem] = useState(null);
   const [invError, setInvError] = useState('');
   const [savingInv, setSavingInv] = useState(false);
   const [confirmDeleteInvId, setConfirmDeleteInvId] = useState(null);
@@ -1178,14 +1179,17 @@ export default function Dashboard() {
     } else {
       const { data, error } = await supabase
         .from('inventory')
-        .insert({ user_id: session.user.id, product_name: name, quantity: qty, notes: invForm.notes.trim(), unit_cost: unitCost })
+        .insert({
+          user_id: session.user.id, product_name: name, quantity: qty, notes: invForm.notes.trim(), unit_cost: unitCost,
+          serial_number: invForm.serialNumber.trim() || null, imei: invForm.imei.trim() || null,
+        })
         .select()
         .single();
       setSavingInv(false);
       if (error) { setInvError('Could not save: ' + error.message); return; }
       setInventoryItems((prev) => [...prev, data].sort((a, b) => a.product_name.localeCompare(b.product_name)));
     }
-    setInvForm({ productName: '', quantity: '', notes: '', unitCost: '' });
+    setInvForm({ productName: '', quantity: '', notes: '', unitCost: '', serialNumber: '', imei: '' });
   };
 
   const deleteInventoryItem = async (id) => {
@@ -1196,7 +1200,11 @@ export default function Dashboard() {
 
   const beginEditInventory = (item) => {
     setEditingInvId(item.id);
-    setEditInvForm({ productName: item.product_name, quantity: String(item.quantity), notes: item.notes || '', unitCost: item.unit_cost != null ? String(item.unit_cost) : '' });
+    setEditInvForm({
+      productName: item.product_name, quantity: String(item.quantity), notes: item.notes || '',
+      unitCost: item.unit_cost != null ? String(item.unit_cost) : '',
+      serialNumber: item.serial_number || '', imei: item.imei || '',
+    });
     setEditInvError('');
   };
 
@@ -1217,7 +1225,10 @@ export default function Dashboard() {
     setSavingInvEdit(true);
     const { data, error } = await supabase
       .from('inventory')
-      .update({ product_name: name, quantity: qty, notes: editInvForm.notes.trim(), unit_cost: unitCost })
+      .update({
+        product_name: name, quantity: qty, notes: editInvForm.notes.trim(), unit_cost: unitCost,
+        serial_number: editInvForm.serialNumber.trim() || null, imei: editInvForm.imei.trim() || null,
+      })
       .eq('id', editingInvId)
       .select()
       .single();
@@ -1580,7 +1591,7 @@ export default function Dashboard() {
 
   return (
     <div style={{ minHeight: '100vh' }}>
-    {invoiceEntries.length === 0 && (
+    {invoiceEntries.length === 0 && !printingInvItem && (
     <>
       <div style={{ height: 4, background: is360Cell ? 'linear-gradient(90deg, #1F5FA8, #76C0E7)' : 'linear-gradient(90deg, #3F6E52, #B8894C, #B0463F, #4C7A9E)' }} />
       <header style={{ borderBottom: '1px solid var(--paper-line)', padding: '26px 24px 18px' }}>
@@ -2374,6 +2385,16 @@ export default function Dashboard() {
                     <input type="number" step="any" min="0" placeholder="0" value={invForm.unitCost}
                       onChange={(e) => setInvForm((f) => ({ ...f, unitCost: e.target.value }))} style={{ marginTop: 6 }} />
                   </label>
+                  <label style={{ width: 160, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                    Serial number (optional)
+                    <input placeholder="e.g. SN12345678" value={invForm.serialNumber}
+                      onChange={(e) => setInvForm((f) => ({ ...f, serialNumber: e.target.value }))} style={{ marginTop: 6 }} />
+                  </label>
+                  <label style={{ width: 160, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                    IMEI (optional)
+                    <input placeholder="e.g. 356938035643809" value={invForm.imei}
+                      onChange={(e) => setInvForm((f) => ({ ...f, imei: e.target.value }))} style={{ marginTop: 6 }} />
+                  </label>
                   <button type="button" onClick={addInventoryItem} disabled={savingInv} style={{
                     padding: '10px 18px', border: 'none', borderRadius: 4,
                     background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600, opacity: savingInv ? 0.6 : 1,
@@ -2382,7 +2403,7 @@ export default function Dashboard() {
                   </button>
                 </div>
                 <p style={{ fontSize: 12, color: 'var(--slate)', margin: '10px 0 0' }}>
-                  If the product name already exists, this adds to its current stock instead of creating a duplicate. Leave cost blank to keep the existing cost, or enter one to update it.
+                  If the product name already exists, this adds to its current stock instead of creating a duplicate. Leave cost blank to keep the existing cost, or enter one to update it. Serial number and IMEI are best used for single-unit items (quantity 1) — restocking an existing product won&apos;t change them.
                 </p>
                 {invError && <div style={{ color: 'var(--coral)', fontSize: 13, marginTop: 10 }}>{invError}</div>}
               </ChartCard>
@@ -2422,7 +2443,9 @@ export default function Dashboard() {
                           {editingInvId === i.id ? (
                             <>
                               <td>
-                                <input value={editInvForm.productName} onChange={(e) => setEditInvForm((f) => ({ ...f, productName: e.target.value }))} style={{ width: 160 }} />
+                                <input value={editInvForm.productName} onChange={(e) => setEditInvForm((f) => ({ ...f, productName: e.target.value }))} style={{ width: 160, marginBottom: 4 }} />
+                                <input placeholder="Serial number" value={editInvForm.serialNumber} onChange={(e) => setEditInvForm((f) => ({ ...f, serialNumber: e.target.value }))} style={{ width: 160, fontSize: 11, marginBottom: 4 }} />
+                                <input placeholder="IMEI" value={editInvForm.imei} onChange={(e) => setEditInvForm((f) => ({ ...f, imei: e.target.value }))} style={{ width: 160, fontSize: 11 }} />
                               </td>
                               <td>
                                 <input type="number" step="1" value={editInvForm.quantity} onChange={(e) => setEditInvForm((f) => ({ ...f, quantity: e.target.value }))} style={{ width: 80 }} />
@@ -2446,13 +2469,23 @@ export default function Dashboard() {
                             </>
                           ) : (
                             <>
-                              <td>{i.product_name}</td>
+                              <td>
+                                {i.product_name}
+                                {(i.serial_number || i.imei) && (
+                                  <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 2 }}>
+                                    {i.serial_number && <>S/N {i.serial_number}</>}
+                                    {i.serial_number && i.imei && ' · '}
+                                    {i.imei && <>IMEI {i.imei}</>}
+                                  </div>
+                                )}
+                              </td>
                               <td style={{ fontFamily: "'IBM Plex Mono', monospace", color: stockColor, fontWeight: 600 }}>{qty}</td>
                               <td style={{ color: 'var(--slate)' }}>{i.notes || '—'}</td>
                               <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{i.unit_cost != null ? fmtUSD(i.unit_cost) : '—'}</td>
                               <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{i.unit_cost != null ? fmtUSD(qty * Number(i.unit_cost)) : '—'}</td>
                               <td>
                                 <span style={{ display: 'flex', gap: 6 }}>
+                                  {i.unit_cost != null && <button onClick={() => setPrintingInvItem(i)} style={{ background: 'none', border: '1px solid var(--paper-line)', color: 'var(--ink)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Print</button>}
                                   {canDeleteEntry && <button onClick={() => beginEditInventory(i)} style={{ background: 'none', border: '1px solid var(--paper-line)', color: 'var(--ink)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Edit</button>}
                                   {canDeleteEntry && (confirmDeleteInvId === i.id ? (
                                     <span style={{ display: 'flex', gap: 6 }}>
@@ -3212,6 +3245,121 @@ export default function Dashboard() {
             </div>
 
             {/* Bottom diagonal accent */}
+            <div style={{
+              height: 26,
+              background: 'linear-gradient(120deg, #cdeee3 0%, #a9d9dd 55%, #8fcbe0 100%)',
+              clipPath: 'polygon(0 40%, 100% 0, 100% 100%, 0 100%)',
+            }} />
+          </div>
+        </div>
+      )}
+
+      {printingInvItem && (
+        <div className="inv-print-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(28,43,57,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, padding: 20 }}>
+          <style>{`
+            @media print {
+              @page { margin: 10mm; }
+              html, body { height: auto !important; }
+              body * { visibility: hidden; }
+              .inv-print-card, .inv-print-card * { visibility: visible; }
+              .inv-print-card {
+                position: static !important; margin: 0 !important; box-shadow: none !important; border-radius: 0 !important;
+                width: 100% !important; max-width: 100% !important; max-height: none !important; overflow: visible !important;
+              }
+              .inv-print-overlay { position: static !important; background: none !important; padding: 0 !important; display: block !important; }
+              .no-print { display: none !important; }
+              * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+            }
+          `}</style>
+          <div className="inv-print-card" style={{
+            background: '#fff', width: '100%', maxWidth: 560, maxHeight: '92vh', overflowY: 'auto',
+            borderRadius: 6, position: 'relative', boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
+          }}>
+            <div style={{ position: 'relative', padding: '32px 36px 26px' }}>
+              <div style={{
+                position: 'absolute', inset: 0, zIndex: 0,
+                background: 'linear-gradient(120deg, #cdeee3 0%, #a9d9dd 55%, #8fcbe0 100%)',
+                clipPath: 'polygon(0 0, 100% 0, 100% 78%, 0 100%)',
+              }} />
+              <div style={{ position: 'relative', zIndex: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <h1 style={{ fontSize: 26, fontWeight: 800, color: '#12202b', letterSpacing: '0.01em' }}>COST RECORD</h1>
+                    <div style={{ fontSize: 11, color: '#12202b', opacity: 0.7, marginTop: 2 }}>Internal record of what this item cost — not for the customer</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    {is360Cell ? (
+                      <img src="/logo-360cell.png" alt="360 Cell" style={{ height: 40, width: 'auto', borderRadius: 5, marginLeft: 'auto' }} />
+                    ) : (
+                      <div style={{ fontFamily: "'Source Serif 4', serif", fontStyle: 'italic', fontWeight: 700, fontSize: 19, color: '#12202b' }}>
+                        The Running Account
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 48, marginTop: 22 }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: '#12202b' }}>DATE ADDED</div>
+                    <div style={{ fontSize: 14, color: '#12202b', marginTop: 2 }}>{invoiceDateStr(String(printingInvItem.created_at).slice(0, 10))}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: '#12202b' }}>RECORD NO</div>
+                    <div style={{ fontSize: 14, color: '#12202b', marginTop: 2 }}>{`INV-${String(printingInvItem.created_at).slice(0, 10).replace(/-/g, '')}-${printingInvItem.id.slice(0, 6).toUpperCase()}`}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ padding: '10px 36px 30px' }}>
+              <table style={{ width: '100%', marginTop: 18, borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid #12202b' }}>
+                    <th style={{ textAlign: 'left', fontSize: 11, fontWeight: 800, color: '#1c6b52', padding: '0 0 8px' }}>ITEM</th>
+                    <th style={{ textAlign: 'right', fontSize: 11, fontWeight: 800, color: '#1c6b52', padding: '0 0 8px' }}>QTY</th>
+                    <th style={{ textAlign: 'right', fontSize: 11, fontWeight: 800, color: '#1c6b52', padding: '0 0 8px' }}>UNIT COST</th>
+                    <th style={{ textAlign: 'right', fontSize: 11, fontWeight: 800, color: '#1c6b52', padding: '0 0 8px' }}>TOTAL COST</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b' }}>
+                      {printingInvItem.product_name}
+                      {printingInvItem.notes ? ` — ${printingInvItem.notes}` : ''}
+                      {(printingInvItem.serial_number || printingInvItem.imei) && (
+                        <div style={{ fontSize: 11, color: '#4a5a66', marginTop: 3 }}>
+                          {printingInvItem.serial_number && <>S/N {printingInvItem.serial_number}</>}
+                          {printingInvItem.serial_number && printingInvItem.imei && ' · '}
+                          {printingInvItem.imei && <>IMEI {printingInvItem.imei}</>}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b', textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace" }}>{Number(printingInvItem.quantity)}</td>
+                    <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b', textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(printingInvItem.unit_cost)}</td>
+                    <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b', textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(Number(printingInvItem.quantity) * Number(printingInvItem.unit_cost))}</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 26 }}>
+                <div style={{ width: 220 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: 15, fontWeight: 700, borderTop: '1px solid #12202b' }}>
+                    <span>Total cost</span>
+                    <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(Number(printingInvItem.quantity) * Number(printingInvItem.unit_cost))}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="no-print" style={{ display: 'flex', gap: 10, marginTop: 30 }}>
+                <button onClick={() => setPrintingInvItem(null)} style={{ flex: 1, padding: '11px 16px', border: '1px solid var(--paper-line)', borderRadius: 4, background: 'transparent', color: 'var(--slate)', fontWeight: 600 }}>
+                  Close
+                </button>
+                <button onClick={() => window.print()} style={{ flex: 1, padding: '11px 16px', border: 'none', borderRadius: 4, background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600 }}>
+                  Print / Save as PDF
+                </button>
+              </div>
+            </div>
+
             <div style={{
               height: 26,
               background: 'linear-gradient(120deg, #cdeee3 0%, #a9d9dd 55%, #8fcbe0 100%)',
