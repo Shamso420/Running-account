@@ -33,34 +33,6 @@ const emptyForm = () => ({
   soldPriceUsd: '',
 });
 
-function getDeviceId() {
-  if (typeof window === 'undefined') return null;
-  let id = window.localStorage.getItem('rat_device_id');
-  if (!id) {
-    id = crypto.randomUUID();
-    window.localStorage.setItem('rat_device_id', id);
-  }
-  return id;
-}
-
-function guessDeviceName() {
-  if (typeof navigator === 'undefined') return 'Unknown device';
-  const ua = navigator.userAgent;
-  let platform = 'Device';
-  if (/iPhone/.test(ua)) platform = 'iPhone';
-  else if (/iPad/.test(ua)) platform = 'iPad';
-  else if (/Android/.test(ua)) platform = 'Android';
-  else if (/Macintosh/.test(ua)) platform = 'Mac';
-  else if (/Windows/.test(ua)) platform = 'Windows';
-  else if (/Linux/.test(ua)) platform = 'Linux';
-  let browser = 'Browser';
-  if (/Edg\//.test(ua)) browser = 'Edge';
-  else if (/Chrome\//.test(ua) && !/Chromium/.test(ua)) browser = 'Chrome';
-  else if (/Safari\//.test(ua) && !/Chrome/.test(ua)) browser = 'Safari';
-  else if (/Firefox\//.test(ua)) browser = 'Firefox';
-  return `${platform} · ${browser}`;
-}
-
 function saleProfitUsd(e) {
   return Number(e.usd) - Number(e.cost_usd || 0);
 }
@@ -258,10 +230,6 @@ export default function Dashboard() {
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
   const [checkingPin, setCheckingPin] = useState(false);
-  const [deviceStatus, setDeviceStatus] = useState('checking'); // 'checking' | 'approved' | 'pending'
-  const [devices, setDevices] = useState([]);
-  const [devicesLoading, setDevicesLoading] = useState(false);
-  const [deviceActionError, setDeviceActionError] = useState('');
 
   const canEdit = !useRoles || role === 'admin';
   const canAdd = !useRoles || role === 'admin' || role === 'entry';
@@ -373,33 +341,6 @@ export default function Dashboard() {
     (async () => {
       setLoading(true);
 
-      const deviceId = getDeviceId();
-      let deviceApproved = true;
-      if (deviceId) {
-        const { data: existingDevices } = await supabase
-          .from('approved_devices')
-          .select('*')
-          .eq('user_id', session.user.id);
-        const mine = (existingDevices || []).find((d) => d.device_id === deviceId);
-        if (mine) {
-          deviceApproved = mine.approved;
-          supabase.from('approved_devices').update({ last_seen_at: new Date().toISOString() }).eq('id', mine.id).then(() => {});
-        } else {
-          deviceApproved = (existingDevices || []).length === 0;
-          await supabase.from('approved_devices').insert({
-            user_id: session.user.id,
-            device_id: deviceId,
-            device_name: guessDeviceName(),
-            approved: deviceApproved,
-          });
-        }
-      }
-      setDeviceStatus(deviceApproved ? 'approved' : 'pending');
-      if (!deviceApproved) {
-        setLoading(false);
-        return;
-      }
-
       const { data: profile } = await supabase
         .from('profiles')
         .select('is_admin, plan, use_roles')
@@ -480,32 +421,6 @@ export default function Dashboard() {
     setPinInput('');
     setPinError('');
     if (typeof window !== 'undefined') sessionStorage.removeItem('rat_role');
-  };
-
-  const loadDevices = async () => {
-    if (!session) return;
-    setDevicesLoading(true);
-    const { data } = await supabase
-      .from('approved_devices')
-      .select('*')
-      .eq('user_id', session.user.id)
-      .order('created_at', { ascending: true });
-    setDevices(data || []);
-    setDevicesLoading(false);
-  };
-
-  const setDeviceApproval = async (id, approved) => {
-    setDeviceActionError('');
-    const { error } = await supabase.from('approved_devices').update({ approved }).eq('id', id);
-    if (error) { setDeviceActionError(error.message); return; }
-    loadDevices();
-  };
-
-  const removeDevice = async (id) => {
-    setDeviceActionError('');
-    const { error } = await supabase.from('approved_devices').delete().eq('id', id);
-    if (error) { setDeviceActionError(error.message); return; }
-    loadDevices();
   };
 
   const openCustomerPicker = (target) => {
@@ -1515,41 +1430,8 @@ export default function Dashboard() {
     if (!loading && !is360Cell && OTHER_ACCOUNT_RESTRICTED_TABS.includes(tab)) setTab('ledger');
   }, [is360Cell, loading, tab]);
 
-  useEffect(() => {
-    if (!loading && !canEdit && tab === 'devices') setTab('ledger');
-  }, [canEdit, loading, tab]);
-
-  useEffect(() => {
-    if (tab === 'devices') loadDevices();
-  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
-
   if (session === undefined || loading) {
     return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading…</div>;
-  }
-
-  if (deviceStatus === 'pending') {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <div style={{ maxWidth: 380, width: '100%', border: '1px solid var(--paper-line)', borderRadius: 6, padding: 28, background: 'var(--card)' }}>
-          <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: '0.14em', color: 'var(--coral)', textTransform: 'uppercase', marginBottom: 8 }}>
-            Device pending approval
-          </div>
-          <h1 style={{ fontSize: 22, marginBottom: 6 }}>This device isn&apos;t approved yet</h1>
-          <p style={{ color: 'var(--slate)', fontSize: 13, marginTop: 0, marginBottom: 20 }}>
-            For security, this account only opens on devices an admin has approved. Ask an admin to approve this device from the Devices screen, then reload this page.
-          </p>
-          <button onClick={() => window.location.reload()} style={{
-            padding: '11px 16px', border: 'none', borderRadius: 4, width: '100%',
-            background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600, marginBottom: 12, cursor: 'pointer',
-          }}>
-            I&apos;ve been approved — reload
-          </button>
-          <button onClick={signOut} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 12, textDecoration: 'underline' }}>
-            Sign out
-          </button>
-        </div>
-      </div>
-    );
   }
 
   if (useRoles && !role) {
@@ -1640,7 +1522,6 @@ export default function Dashboard() {
             ...(is360Cell ? [{ key: 'inventory', label: 'Inventory' }] : []),
             ...(is360Cell ? [{ key: 'journal', label: 'Journal' }] : []),
             ...(is360Cell && plan === 'business' ? [{ key: 'goals', label: 'Goals' }] : []),
-            ...(canEdit ? [{ key: 'devices', label: 'Devices' }] : []),
           ].map((t) => (
             <button key={t.key} onClick={() => { if (t.key === 'add') cancelEditEntry(); setTab(t.key); }} style={{
               padding: '9px 16px', border: 'none', cursor: 'pointer',
@@ -2754,57 +2635,6 @@ export default function Dashboard() {
           </div>
         )}
 
-        {tab === 'devices' && canEdit && (
-          <div style={{ maxWidth: 640 }}>
-            <p style={{ color: 'var(--slate)', fontSize: 14, marginTop: 0, marginBottom: 24 }}>
-              Only approved devices can sign in to this account. The first device ever used was approved automatically — approve or revoke every device after that.
-            </p>
-
-            {deviceActionError && (
-              <div style={{ color: 'var(--coral)', fontSize: 13, marginBottom: 16 }}>{deviceActionError}</div>
-            )}
-
-            {devicesLoading ? (
-              <div style={{ color: 'var(--slate)', fontSize: 14 }}>Loading…</div>
-            ) : devices.length === 0 ? (
-              <div style={{ color: 'var(--slate)', fontSize: 14 }}>No devices yet.</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {devices.map((d) => {
-                  const isThisDevice = d.device_id === getDeviceId();
-                  return (
-                    <div key={d.id} style={{ border: '1px solid var(--paper-line)', borderRadius: 4, padding: 14, background: 'var(--card)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: 14 }}>
-                          {d.device_name || 'Unknown device'}
-                          {isThisDevice && <span style={{ color: 'var(--gold)', fontWeight: 500 }}> · this device</span>}
-                        </div>
-                        <div style={{ fontSize: 12, color: 'var(--slate)', marginTop: 2 }}>
-                          {d.approved ? 'Approved' : 'Pending approval'} · first seen {new Date(d.created_at).toLocaleDateString()} · last seen {new Date(d.last_seen_at).toLocaleDateString()}
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        {!d.approved && (
-                          <button onClick={() => setDeviceApproval(d.id, true)} style={{ padding: '7px 14px', border: 'none', borderRadius: 4, background: 'var(--green)', color: 'var(--paper)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
-                            Approve
-                          </button>
-                        )}
-                        {d.approved && !isThisDevice && (
-                          <button onClick={() => setDeviceApproval(d.id, false)} style={{ padding: '7px 14px', border: '1px solid var(--coral)', borderRadius: 4, background: 'transparent', color: 'var(--coral)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
-                            Revoke
-                          </button>
-                        )}
-                        <button onClick={() => removeDevice(d.id)} style={{ padding: '7px 14px', border: 'none', background: 'transparent', color: 'var(--slate)', fontSize: 13, cursor: 'pointer' }}>
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
       </main>
 
       {sellingEntry && (
