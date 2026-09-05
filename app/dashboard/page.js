@@ -265,7 +265,7 @@ export default function Dashboard() {
   const [increaseError, setIncreaseError] = useState('');
   const [increasing, setIncreasing] = useState(false);
   const [costForm, setCostForm] = useState({ date: new Date().toISOString().slice(0, 10), description: '', amount: '', currency: 'LBP', frequency: 'monthly' });
-  const [wageForm, setWageForm] = useState({ date: new Date().toISOString().slice(0, 10), description: '', amount: '', currency: 'LBP', frequency: 'monthly' });
+  const [wageForm, setWageForm] = useState({ date: new Date().toISOString().slice(0, 10), description: '', amount: '', currency: 'LBP', frequency: 'monthly', deductionAmount: '', deductionReason: '' });
   const [costError, setCostError] = useState('');
   const [savingCost, setSavingCost] = useState(false);
   const [debtForm, setDebtForm] = useState({ date: new Date().toISOString().slice(0, 10), who: '', customerId: null, direction: 'owed_to_me', category: '', amount: '', currency: 'LBP', notes: '' });
@@ -984,9 +984,16 @@ export default function Dashboard() {
     const amt = parseFloat(form.amount);
     if (!amt || amt <= 0) { setCostError('Enter an amount greater than zero.'); return; }
     if (!form.description.trim()) { setCostError(section === 'wage' ? 'Enter who this wage is for.' : 'Enter a description.'); return; }
+    let deduction = 0;
+    if (section === 'wage' && form.deductionAmount?.trim()) {
+      deduction = parseFloat(form.deductionAmount);
+      if (Number.isNaN(deduction) || deduction < 0) { setCostError('Enter a valid deduction amount.'); return; }
+      if (deduction > amt) { setCostError("Deduction can't be more than the salary."); return; }
+    }
+    const net = amt - deduction;
     setCostError('');
     setSavingCost(true);
-    const { usd, lbp } = toUsdLbp(amt, form.currency);
+    const { usd, lbp } = toUsdLbp(net, form.currency);
     const { data, error } = await supabase
       .from('entries')
       .insert({
@@ -997,33 +1004,49 @@ export default function Dashboard() {
         where_text: '',
         notes: '',
         currency: form.currency,
-        amount_raw: amt,
+        amount_raw: net,
         usd, lbp,
         cost_section: section,
         recurrence: form.frequency,
+        gross_amount: section === 'wage' ? amt : null,
+        deduction_amount: section === 'wage' && deduction > 0 ? deduction : null,
+        deduction_reason: section === 'wage' && deduction > 0 ? (form.deductionReason || '').trim() || null : null,
       })
       .select()
       .single();
     setSavingCost(false);
     if (error) { setCostError('Could not save: ' + error.message); return; }
     setAllEntries((prev) => [data, ...prev].sort((a, b) => b.entry_date.localeCompare(a.entry_date)));
-    setForm((f) => ({ ...f, description: '', amount: '' }));
+    setForm((f) => ({ ...f, description: '', amount: '', deductionAmount: '', deductionReason: '' }));
   };
 
   const editRecurringCost = async (id, form) => {
     const amt = parseFloat(form.amount);
     if (!amt || amt <= 0) return { error: 'Enter an amount greater than zero.' };
     if (!form.description.trim()) return { error: 'Enter a description.' };
-    const { usd, lbp } = toUsdLbp(amt, form.currency);
+    const isWage = form.isWage;
+    let deduction = 0;
+    if (isWage && form.deductionAmount?.trim()) {
+      deduction = parseFloat(form.deductionAmount);
+      if (Number.isNaN(deduction) || deduction < 0) return { error: 'Enter a valid deduction amount.' };
+      if (deduction > amt) return { error: "Deduction can't be more than the salary." };
+    }
+    const net = amt - deduction;
+    const { usd, lbp } = toUsdLbp(net, form.currency);
     const { data, error } = await supabase
       .from('entries')
       .update({
         entry_date: form.date,
         category: form.description.trim(),
         currency: form.currency,
-        amount_raw: amt,
+        amount_raw: net,
         usd, lbp,
         recurrence: form.frequency,
+        ...(isWage ? {
+          gross_amount: amt,
+          deduction_amount: deduction > 0 ? deduction : null,
+          deduction_reason: deduction > 0 ? (form.deductionReason || '').trim() || null : null,
+        } : {}),
       })
       .eq('id', id)
       .select()
@@ -3686,14 +3709,19 @@ function RecurringCostSection({
   const [editError, setEditError] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
 
+  const isWage = title === 'wage';
+
   const beginEdit = (e) => {
     setEditingId(e.id);
     setEditForm({
       date: e.entry_date,
       description: e.category || '',
-      amount: String(e.amount_raw),
+      amount: String(isWage && e.gross_amount != null ? e.gross_amount : e.amount_raw),
       currency: e.currency || 'LBP',
       frequency: e.recurrence || 'monthly',
+      isWage,
+      deductionAmount: e.deduction_amount != null ? String(e.deduction_amount) : '',
+      deductionReason: e.deduction_reason || '',
     });
     setEditError('');
   };
@@ -3732,7 +3760,7 @@ function RecurringCostSection({
             <input value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} style={{ marginTop: 6 }} />
           </label>
           <label style={{ width: 120, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
-            Amount
+            {isWage ? 'Salary' : 'Amount'}
             <input type="number" step="any" min="0" placeholder="0" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} style={{ marginTop: 6 }} />
           </label>
           <label style={{ width: 100, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
@@ -3748,6 +3776,20 @@ function RecurringCostSection({
               {FREQUENCIES.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
             </select>
           </label>
+          {isWage && (
+            <>
+              <label style={{ width: 130, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                Deduction (optional)
+                <input type="number" step="any" min="0" placeholder="0" value={form.deductionAmount}
+                  onChange={(e) => setForm((f) => ({ ...f, deductionAmount: e.target.value }))} style={{ marginTop: 6 }} />
+              </label>
+              <label style={{ flex: 1, minWidth: 160, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+                Deduction reason
+                <input placeholder="e.g. cash advance" value={form.deductionReason}
+                  onChange={(e) => setForm((f) => ({ ...f, deductionReason: e.target.value }))} style={{ marginTop: 6 }} />
+              </label>
+            </>
+          )}
           <button type="button" onClick={onSubmit} disabled={saving} style={{
             padding: '10px 18px', border: 'none', borderRadius: 4,
             background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600, opacity: saving ? 0.6 : 1,
@@ -3755,6 +3797,11 @@ function RecurringCostSection({
             {saving ? 'Saving…' : 'Add'}
           </button>
         </div>
+        {isWage && (
+          <p style={{ fontSize: 12, color: 'var(--slate)', margin: '10px 0 0' }}>
+            Enter the full salary, then an optional deduction (e.g. a cash advance) — the amount actually paid out (and what shows in reports) is the salary minus the deduction.
+          </p>
+        )}
         {error && <div style={{ color: 'var(--coral)', fontSize: 13, marginTop: 10 }}>{error}</div>}
       </ChartCard>
       )}
@@ -3782,13 +3829,21 @@ function RecurringCostSection({
                         </select>
                       </td>
                       <td>
-                        <span style={{ display: 'flex', gap: 4 }}>
+                        <span style={{ display: 'flex', gap: 4, marginBottom: isWage ? 4 : 0 }}>
                           <input type="number" step="any" min="0" value={editForm.amount} onChange={(ev) => setEditForm((f) => ({ ...f, amount: ev.target.value }))} style={{ width: 90 }} />
                           <select value={editForm.currency} onChange={(ev) => setEditForm((f) => ({ ...f, currency: ev.target.value }))} style={{ width: 70 }}>
                             <option value="LBP">LBP</option>
                             <option value="USD">USD</option>
                           </select>
                         </span>
+                        {isWage && (
+                          <span style={{ display: 'flex', gap: 4 }}>
+                            <input type="number" step="any" min="0" placeholder="Deduction" value={editForm.deductionAmount}
+                              onChange={(ev) => setEditForm((f) => ({ ...f, deductionAmount: ev.target.value }))} style={{ width: 90, fontSize: 11 }} />
+                            <input placeholder="Reason" value={editForm.deductionReason}
+                              onChange={(ev) => setEditForm((f) => ({ ...f, deductionReason: ev.target.value }))} style={{ width: 90, fontSize: 11 }} />
+                          </span>
+                        )}
                       </td>
                       <td>
                         <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -3805,7 +3860,15 @@ function RecurringCostSection({
                       <td>{e.entry_date}</td>
                       <td>{e.category}</td>
                       <td style={{ textTransform: 'capitalize' }}>{e.recurrence || '—'}</td>
-                      <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(e.usd)}</td>
+                      <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
+                        {fmtUSD(e.usd)}
+                        {e.deduction_amount > 0 && (
+                          <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, color: 'var(--slate)', marginTop: 2 }}>
+                            {fmtUSD(toUsdLbp(e.gross_amount, e.currency).usd)} − {fmtUSD(toUsdLbp(e.deduction_amount, e.currency).usd)}
+                            {e.deduction_reason ? ` (${e.deduction_reason})` : ''}
+                          </div>
+                        )}
+                      </td>
                       <td>
                         <span style={{ display: 'flex', gap: 6 }}>
                           {canEdit && <button onClick={() => beginEdit(e)} style={{ background: 'none', border: '1px solid var(--paper-line)', color: 'var(--ink)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Edit</button>}
