@@ -137,6 +137,14 @@ function computeSaleStats(rows) {
 
 const PIE_COLORS = ['#F0B429', '#FF5C7A', '#34D399', '#2DE2E6', '#B48CFF', '#FF9F6B', '#4ADE80', '#F472B6'];
 
+const CHART_TICK = { fontSize: 12, fill: '#7C8AA3' };
+const CHART_TOOLTIP_PROPS = {
+  contentStyle: { background: '#12151C', border: '1px solid #232A36', borderRadius: 4, color: '#E7ECF3', fontSize: 13 },
+  labelStyle: { color: '#E7ECF3' },
+  itemStyle: { color: '#E7ECF3' },
+};
+const CHART_LEGEND_STYLE = { fontSize: 12, color: '#7C8AA3' };
+
 const GOAL_PERIODS = [
   { key: 'daily', label: 'Daily' },
   { key: 'weekly', label: 'Weekly' },
@@ -1972,7 +1980,7 @@ export default function Dashboard() {
                                   <Pie data={catData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={65} label={({ name }) => name}>
                                     {catData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                                   </Pie>
-                                  <Tooltip formatter={(v) => fmtUSD(v)} />
+                                  <Tooltip formatter={(v) => fmtUSD(v)} {...CHART_TOOLTIP_PROPS} />
                                 </PieChart>
                               </ResponsiveContainer>
                             </div>
@@ -2096,92 +2104,110 @@ export default function Dashboard() {
         )}
 
         {tab === 'dashboard' && (
-          entries.length === 0 ? <EmptyState onAdd={() => setTab('add')} /> : (
+          entries.length === 0 ? <EmptyState onAdd={() => setTab('add')} /> : (() => {
+            const kpiVals = [totals.income, totals.expense, totals.investment, totals.sale, totals.netDebt, totals.net].map((v) => Math.abs(Number(v)));
+            const maxAbs = Math.max(1, ...kpiVals);
+            const ringDeg = (v) => 30 + Math.min(1, Math.abs(Number(v)) / maxAbs) * 300;
+            return (
           <div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 32 }}>
-              <KpiCard label="Income" value={fmtUSD(totals.income)} color="var(--green)" />
-              <KpiCard label="Expenses" value={fmtUSD(totals.expense)} color="var(--coral)" />
-              <KpiCard label="Invested" value={fmtUSD(totals.investment)} color="var(--gold)" />
-              <KpiCard label="Sale profit" value={fmtUSD(totals.sale)} color="var(--blue)" />
-              <KpiCard label="Debt (net)" value={fmtUSD(totals.netDebt)} color={totals.netDebt >= 0 ? 'var(--green)' : 'var(--coral)'} />
-              <KpiCard label="Net position" value={fmtUSD(totals.net)} color={totals.net >= 0 ? 'var(--green)' : 'var(--coral)'} bold />
+            <div className="hud-bar">
+              <div className="hud-left"><span className="hud-pulse" /> LEDGER-02 &middot; SYNCED</div>
+              <div className="hud-right">
+                <span>ACCOUNT <b>{is360Cell ? '360 CELL' : 'PERSONAL'}</b></span>
+                <span>ENTRIES <b>{entries.length}</b></span>
+                <span>PERIOD <b>ALL TIME</b></span>
+              </div>
+            </div>
+
+            <div className="hud-frame" style={{ border: '1px solid var(--paper-line)', borderRadius: 4, background: 'var(--card)', padding: '20px 16px', marginBottom: 32 }}>
+              <span className="hud-c2" />
+              <div className="hud-sweep" />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 12, position: 'relative', zIndex: 1 }}>
+                <HudRing label="Income" value={fmtUSD(totals.income)} color="var(--green)" deg={ringDeg(totals.income)} icon="USD" />
+                <HudRing label="Expenses" value={fmtUSD(totals.expense)} color="var(--coral)" deg={ringDeg(totals.expense)} icon="USD" />
+                <HudRing label="Invested" value={fmtUSD(totals.investment)} color="var(--gold)" deg={ringDeg(totals.investment)} icon="USD" />
+                <HudRing label="Sale profit" value={fmtUSD(totals.sale)} color="var(--blue)" deg={ringDeg(totals.sale)} icon="USD" />
+                <HudRing label="Debt (net)" value={fmtUSD(totals.netDebt)} color={totals.netDebt >= 0 ? 'var(--green)' : 'var(--coral)'} deg={ringDeg(totals.netDebt)} icon="NET" />
+                <HudRing label="Net position" value={fmtUSD(totals.net)} color={totals.net >= 0 ? 'var(--green)' : 'var(--coral)'} deg={ringDeg(totals.net)} icon="NET" />
+              </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 32 }}>
-              <ChartCard title="Expenses by category">
+              <ChartCard title="Expenses by category" hud>
                 {expenseByCategory.length === 0 ? <NoData /> : (
                   <ResponsiveContainer width="100%" height={240}>
                     <PieChart>
                       <Pie data={expenseByCategory} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={85} label={({ name }) => name}>
                         {expenseByCategory.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                       </Pie>
-                      <Tooltip formatter={(v) => fmtUSD(v)} />
+                      <Tooltip formatter={(v) => fmtUSD(v)} {...CHART_TOOLTIP_PROPS} />
                     </PieChart>
                   </ResponsiveContainer>
                 )}
               </ChartCard>
-              <ChartCard title="Investments by category">
+              <ChartCard title="Investments by category" hud>
                 {investmentByCategory.length === 0 ? <NoData /> : (
                   <ResponsiveContainer width="100%" height={240}>
                     <PieChart>
                       <Pie data={investmentByCategory} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={85} label={({ name }) => name}>
                         {investmentByCategory.map((_, i) => <Cell key={i} fill={PIE_COLORS[(i + 3) % PIE_COLORS.length]} />)}
                       </Pie>
-                      <Tooltip formatter={(v) => fmtUSD(v)} />
+                      <Tooltip formatter={(v) => fmtUSD(v)} {...CHART_TOOLTIP_PROPS} />
                     </PieChart>
                   </ResponsiveContainer>
                 )}
               </ChartCard>
             </div>
 
-            <ChartCard title="Monthly flow">
+            <ChartCard title="Monthly flow" hud>
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={monthly}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--paper-line)" />
-                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `$${v}`} />
-                  <Tooltip formatter={(v) => fmtUSD(v)} />
-                  <Legend />
-                  <Bar dataKey="income" name="Income" fill="#3F6E52" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="expense" name="Expense" fill="#B0463F" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="investment" name="Investment" fill="#B8894C" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="sale" name="Sale profit" fill="#4C7A9E" radius={[3, 3, 0, 0]} />
+                  <XAxis dataKey="month" tick={CHART_TICK} />
+                  <YAxis tick={CHART_TICK} tickFormatter={(v) => `$${v}`} />
+                  <Tooltip formatter={(v) => fmtUSD(v)} {...CHART_TOOLTIP_PROPS} />
+                  <Legend wrapperStyle={CHART_LEGEND_STYLE} />
+                  <Bar dataKey="income" name="Income" fill="#34D399" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="expense" name="Expense" fill="#FF5C7A" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="investment" name="Investment" fill="#F0B429" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="sale" name="Sale profit" fill="#2DE2E6" radius={[3, 3, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </ChartCard>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginTop: 24 }}>
-              <ChartCard title="Net position over time">
+              <ChartCard title="Net position over time" hud>
                 {trend.length < 2 ? <NoData /> : (
                   <ResponsiveContainer width="100%" height={240}>
                     <LineChart data={trend}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--paper-line)" />
-                      <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                      <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `$${v}`} />
-                      <Tooltip formatter={(v) => fmtUSD(v)} />
-                      <Line type="monotone" dataKey="net" name="Net position" stroke="#B8894C" strokeWidth={2} dot={{ r: 3 }} />
+                      <XAxis dataKey="month" tick={CHART_TICK} />
+                      <YAxis tick={CHART_TICK} tickFormatter={(v) => `$${v}`} />
+                      <Tooltip formatter={(v) => fmtUSD(v)} {...CHART_TOOLTIP_PROPS} />
+                      <Line type="monotone" dataKey="net" name="Net position" stroke="#F0B429" strokeWidth={2} dot={{ r: 3 }} />
                     </LineChart>
                   </ResponsiveContainer>
                 )}
               </ChartCard>
-              <ChartCard title="Income vs. expenses trend">
+              <ChartCard title="Income vs. expenses trend" hud>
                 {trend.length < 2 ? <NoData /> : (
                   <ResponsiveContainer width="100%" height={240}>
                     <LineChart data={trend}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--paper-line)" />
-                      <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                      <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `$${v}`} />
-                      <Tooltip formatter={(v) => fmtUSD(v)} />
-                      <Legend />
-                      <Line type="monotone" dataKey="income" name="Income" stroke="#3F6E52" strokeWidth={2} dot={{ r: 3 }} />
-                      <Line type="monotone" dataKey="expense" name="Expense" stroke="#B0463F" strokeWidth={2} dot={{ r: 3 }} />
+                      <XAxis dataKey="month" tick={CHART_TICK} />
+                      <YAxis tick={CHART_TICK} tickFormatter={(v) => `$${v}`} />
+                      <Tooltip formatter={(v) => fmtUSD(v)} {...CHART_TOOLTIP_PROPS} />
+                      <Legend wrapperStyle={CHART_LEGEND_STYLE} />
+                      <Line type="monotone" dataKey="income" name="Income" stroke="#34D399" strokeWidth={2} dot={{ r: 3 }} />
+                      <Line type="monotone" dataKey="expense" name="Expense" stroke="#FF5C7A" strokeWidth={2} dot={{ r: 3 }} />
                     </LineChart>
                   </ResponsiveContainer>
                 )}
               </ChartCard>
             </div>
           </div>
-          )
+            );
+          })()
         )}
 
         {tab === 'daily' && (
@@ -3903,11 +3929,31 @@ function KpiCard({ label, value, color, bold }) {
   );
 }
 
-function ChartCard({ title, children }) {
+function ChartCard({ title, children, hud }) {
   return (
-    <div style={{ border: '1px solid var(--paper-line)', borderRadius: 4, padding: 18, background: 'var(--card)' }}>
-      <h3 style={{ fontSize: 16, marginBottom: 12 }}>{title}</h3>
-      {children}
+    <div className={hud ? 'hud-frame' : undefined} style={{ border: '1px solid var(--paper-line)', borderRadius: 4, padding: 18, background: 'var(--card)' }}>
+      {hud && <span className="hud-c2" />}
+      {hud && <div className="hud-sweep" />}
+      <h3 style={hud
+        ? { fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600, fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--blue)', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8, position: 'relative', zIndex: 1 }
+        : { fontSize: 16, marginBottom: 12 }}>
+        {title}
+        {hud && <span style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, var(--paper-line), transparent)' }} />}
+      </h3>
+      <div style={hud ? { position: 'relative', zIndex: 1 } : undefined}>{children}</div>
+    </div>
+  );
+}
+
+function HudRing({ label, value, color, deg, icon }) {
+  return (
+    <div style={{ textAlign: 'center' }}>
+      <div className="hud-ring" style={{ '--ring-c': color, '--ring-deg': `${deg}deg` }}>
+        <span className="hud-ring-dot" style={{ background: color, boxShadow: `0 0 6px 1px ${color}` }} />
+        <span className="hud-ring-icon" style={{ color }}>{icon}</span>
+      </div>
+      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 9.5, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--slate)', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 14, color }}>{value}</div>
     </div>
   );
 }

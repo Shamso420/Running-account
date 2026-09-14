@@ -92,3 +92,63 @@ tbody tr:nth-child(odd) {
 @media print {
   body::before { display: none; }
 }
+
+/* Recharts dark-theme legibility (class-based fallback; explicit props are
+   also passed where charts are rendered — this just catches anything they miss) */
+.recharts-cartesian-axis-tick text { fill: var(--slate); }
+.recharts-legend-item-text { color: var(--slate) !important; }
+.recharts-pie-label-text { fill: var(--ink); }
+.recharts-default-tooltip { background: var(--card) !important; border: 1px solid var(--paper-line) !important; }
+
+/* Jarvis-style HUD building blocks (Dashboard tab) */
+.hud-frame { position: relative; overflow: hidden; }
+.hud-c2 { position: absolute; inset: 0; pointer-events: none; }
+.hud-frame::before, .hud-frame::after, .hud-c2::before, .hud-c2::after {
+  content: ''; position: absolute; width: 12px; height: 12px; pointer-events: none; z-index: 2;
+}
+.hud-frame::before { top: -1px; left: -1px; border-top: 2px solid var(--hud-c, var(--blue)); border-left: 2px solid var(--hud-c, var(--blue)); }
+.hud-frame::after { bottom: -1px; right: -1px; border-bottom: 2px solid var(--hud-c, var(--blue)); border-right: 2px solid var(--hud-c, var(--blue)); }
+.hud-c2::before { top: -1px; right: -1px; border-top: 2px solid var(--hud-c, var(--blue)); border-right: 2px solid var(--hud-c, var(--blue)); }
+.hud-c2::after { bottom: -1px; left: -1px; border-bottom: 2px solid var(--hud-c, var(--blue)); border-left: 2px solid var(--hud-c, var(--blue)); }
+
+.hud-sweep { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 1; }
+.hud-sweep::before {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 40%; left: -50%;
+  background: linear-gradient(90deg, transparent, rgba(45, 226, 230, 0.08), transparent);
+  animation: hudSweepMove 2.4s ease-out 1;
+}
+@keyframes hudSweepMove { from { left: -50%; } to { left: 110%; } }
+
+.hud-bar {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+  border: 1px solid var(--paper-line); border-radius: 4px; padding: 10px 16px; margin-bottom: 20px;
+  background: linear-gradient(180deg, rgba(45, 226, 230, 0.05), transparent);
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.06em; color: var(--slate);
+}
+.hud-bar .hud-left { display: flex; align-items: center; gap: 8px; color: var(--blue); }
+.hud-bar .hud-right { display: flex; gap: 16px; flex-wrap: wrap; }
+.hud-bar .hud-right b { color: var(--ink); font-weight: 500; }
+
+.hud-pulse {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--blue); flex: none;
+  animation: hudPulseDot 2s ease-out infinite;
+}
+@keyframes hudPulseDot {
+  0% { box-shadow: 0 0 0 0 rgba(45, 226, 230, 0.55); }
+  70% { box-shadow: 0 0 0 8px rgba(45, 226, 230, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(45, 226, 230, 0); }
+}
+
+.hud-ring {
+  width: 68px; height: 68px; border-radius: 50%; margin: 0 auto 8px; position: relative;
+  background: conic-gradient(var(--ring-c, var(--blue)) 0deg, var(--ring-c, var(--blue)) var(--ring-deg, 270deg), rgba(255, 255, 255, 0.06) var(--ring-deg, 270deg));
+  display: flex; align-items: center; justify-content: center;
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--ring-c, var(--blue)) 45%, transparent));
+}
+.hud-ring::before { content: ''; position: absolute; inset: 5px; border-radius: 50%; background: var(--card); }
+.hud-ring-dot { position: absolute; top: 3px; left: 50%; transform: translateX(-50%); width: 5px; height: 5px; border-radius: 50%; }
+.hud-ring-icon { position: relative; z-index: 1; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.05em; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-pulse, .hud-sweep::before { animation: none !important; }
+}
