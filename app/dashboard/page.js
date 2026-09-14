@@ -135,7 +135,7 @@ function computeSaleStats(rows) {
   return { transactions, revenue, cost, grossProfit, grossMargin, avgProfitPerSale, collected, openReceivables, collectionRate, categories, bestCategory, worstCategory, transactionRows };
 }
 
-const PIE_COLORS = ['#B8894C', '#B0463F', '#3F6E52', '#4C7A9E', '#8A6BA8', '#C48A3F', '#6B8F8A', '#9E6B5C'];
+const PIE_COLORS = ['#F0B429', '#FF5C7A', '#34D399', '#2DE2E6', '#B48CFF', '#FF9F6B', '#4ADE80', '#F472B6'];
 
 const GOAL_PERIODS = [
   { key: 'daily', label: 'Daily' },
@@ -1498,7 +1498,7 @@ export default function Dashboard() {
     <div style={{ minHeight: '100vh' }}>
     {invoiceEntries.length === 0 && !printingInvItem && (
     <>
-      <div style={{ height: 4, background: is360Cell ? 'linear-gradient(90deg, #1F5FA8, #76C0E7)' : 'linear-gradient(90deg, #3F6E52, #B8894C, #B0463F, #4C7A9E)' }} />
+      <div style={{ height: 4, background: is360Cell ? 'linear-gradient(90deg, var(--blue), #7DF9FF)' : 'linear-gradient(90deg, var(--green), var(--gold), var(--coral), var(--blue))' }} />
       <header style={{ borderBottom: '1px solid var(--paper-line)', padding: '26px 24px 18px' }}>
         <div style={{ maxWidth: 1080, margin: '0 auto', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -1506,7 +1506,7 @@ export default function Dashboard() {
               <img src="/logo-360cell.png" alt="360 Cell" style={{ height: 44, width: 'auto', borderRadius: 6 }} />
             )}
             <div>
-              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: '0.14em', color: is360Cell ? '#1F5FA8' : 'var(--gold)', textTransform: 'uppercase', marginBottom: 6 }}>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: '0.14em', color: is360Cell ? 'var(--blue)' : 'var(--gold)', textTransform: 'uppercase', marginBottom: 6 }}>
                 Ledger No. 02
               </div>
               <h1 style={{ fontSize: 30 }}>The Running Account</h1>
@@ -1514,7 +1514,7 @@ export default function Dashboard() {
           </div>
           <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: 'var(--slate)', textAlign: 'right' }}>
             {session.user.email}<br />
-            {useRoles && role && <span style={{ color: '#8A6BA8', textTransform: 'capitalize' }}>{role} · </span>}
+            {useRoles && role && <span style={{ color: '#B48CFF', textTransform: 'capitalize' }}>{role} · </span>}
             {isAdmin && <Link href="/admin" style={{ color: 'var(--gold)' }}>Admin view</Link>}
             {isAdmin && ' · '}
             {useRoles && (
@@ -1548,7 +1548,7 @@ export default function Dashboard() {
           ].map((t) => (
             <button key={t.key} onClick={() => { if (t.key === 'add') cancelEditEntry(); setTab(t.key); }} style={{
               padding: '9px 16px', border: 'none', cursor: 'pointer',
-              background: tab === t.key ? (is360Cell ? '#1F5FA8' : 'var(--ink)') : 'transparent',
+              background: tab === t.key ? (is360Cell ? 'var(--blue)' : 'var(--ink)') : 'transparent',
               color: tab === t.key ? 'var(--paper)' : 'var(--slate)',
               fontWeight: 500, borderRadius: '3px 3px 0 0',
             }}>
@@ -1567,7 +1567,7 @@ export default function Dashboard() {
 
       <main style={{ maxWidth: 1080, margin: '0 auto', padding: '28px 24px 80px' }}>
         {loadError && (
-          <div style={{ background: '#FBEAE8', border: '1px solid var(--coral)', color: 'var(--coral)', borderRadius: 4, padding: '12px 16px', fontSize: 13, marginBottom: 24 }}>
+          <div style={{ background: 'rgba(255,92,122,0.1)', border: '1px solid var(--coral)', color: 'var(--coral)', borderRadius: 4, padding: '12px 16px', fontSize: 13, marginBottom: 24 }}>
             Could not load your entries: {loadError}
           </div>
         )}
@@ -1608,9 +1608,9 @@ export default function Dashboard() {
                   ].map((d) => (
                     <button type="button" key={d.key} onClick={() => setForm((f) => ({ ...f, debtDirection: d.key }))} style={{
                       flex: 1, padding: '10px 12px', borderRadius: 4, cursor: 'pointer',
-                      border: `1.5px solid ${form.debtDirection === d.key ? '#8A6BA8' : 'var(--paper-line)'}`,
-                      background: form.debtDirection === d.key ? '#8A6BA81a' : 'transparent',
-                      color: form.debtDirection === d.key ? '#8A6BA8' : 'var(--slate)', fontWeight: 600, fontSize: 13,
+                      border: `1.5px solid ${form.debtDirection === d.key ? '#B48CFF' : 'var(--paper-line)'}`,
+                      background: form.debtDirection === d.key ? '#B48CFF1a' : 'transparent',
+                      color: form.debtDirection === d.key ? '#B48CFF' : 'var(--slate)', fontWeight: 600, fontSize: 13,
                     }}>
                       {d.label}
                     </button>
@@ -1952,7 +1952,7 @@ export default function Dashboard() {
                         }}
                       >
                         <span style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-                          <span style={{ fontFamily: "'Source Serif 4', serif", fontWeight: 600, fontSize: 17 }}>{monthLabel(g.month)}</span>
+                          <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 17 }}>{monthLabel(g.month)}</span>
                           <span style={{ color: 'var(--slate)', fontSize: 12 }}>{g.entries.length} {g.entries.length === 1 ? 'entry' : 'entries'}</span>
                         </span>
                         <span style={{ display: 'flex', alignItems: 'center', gap: 18, fontSize: 13 }}>
@@ -2005,7 +2005,7 @@ export default function Dashboard() {
                                       <td>
                                         {e.category}
                                         {e.private && (
-                                          <span style={{ marginLeft: 6, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#8A6BA8', border: '1px solid #8A6BA8', borderRadius: 3, padding: '1px 5px' }}>
+                                          <span style={{ marginLeft: 6, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#B48CFF', border: '1px solid #B48CFF', borderRadius: 3, padding: '1px 5px' }}>
                                             Private
                                           </span>
                                         )}
@@ -2058,10 +2058,10 @@ export default function Dashboard() {
                                             <button onClick={() => openSell(e)} style={{ background: 'none', border: '1px solid var(--gold)', color: 'var(--gold)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Sell</button>
                                           )}
                                           {canSettleDebt && isActiveDebt && (
-                                            <button onClick={() => settleDebt(e)} style={{ background: 'none', border: '1px solid #8A6BA8', color: '#8A6BA8', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Settle</button>
+                                            <button onClick={() => settleDebt(e)} style={{ background: 'none', border: '1px solid #B48CFF', color: '#B48CFF', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Settle</button>
                                           )}
                                           {canSettleDebt && isActiveDebt && (
-                                            <button onClick={() => openIncreaseDebt(e)} style={{ background: 'none', border: '1px solid #8A6BA8', color: '#8A6BA8', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Add to debt</button>
+                                            <button onClick={() => openIncreaseDebt(e)} style={{ background: 'none', border: '1px solid #B48CFF', color: '#B48CFF', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Add to debt</button>
                                           )}
                                           {canSettleDebt && ((isDirectSale && saleBalanceDue > 0.001) || (isActiveDebt && debtBalanceDue > 0.001)) && (
                                             <button onClick={() => openRecordPayment(e)} style={{ background: 'none', border: '1px solid var(--blue)', color: 'var(--blue)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Record payment</button>
@@ -2883,7 +2883,7 @@ export default function Dashboard() {
               }} />
               <div style={{ position: 'relative', zIndex: 1 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <h1 style={{ fontSize: 30, fontWeight: 800, color: '#12202b', letterSpacing: '0.01em' }}>INVOICE</h1>
+                <h1 style={{ fontFamily: "'Source Serif 4', serif", fontSize: 30, fontWeight: 800, color: '#12202b', letterSpacing: '0.01em' }}>INVOICE</h1>
                 <div style={{ textAlign: 'right' }}>
                   {is360Cell ? (
                     <>
@@ -3137,7 +3137,7 @@ export default function Dashboard() {
               <div style={{ position: 'relative', zIndex: 1 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
-                    <h1 style={{ fontSize: 26, fontWeight: 800, color: '#12202b', letterSpacing: '0.01em' }}>COST RECORD</h1>
+                    <h1 style={{ fontFamily: "'Source Serif 4', serif", fontSize: 26, fontWeight: 800, color: '#12202b', letterSpacing: '0.01em' }}>COST RECORD</h1>
                     <div style={{ fontSize: 11, color: '#12202b', opacity: 0.7, marginTop: 2 }}>Internal record of what this item cost — not for the customer</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
@@ -3539,9 +3539,9 @@ function DebtsSection({
               ].map((d) => (
                 <button type="button" key={d.key} onClick={() => setForm((f) => ({ ...f, direction: d.key }))} style={{
                   padding: '10px 12px', borderRadius: 4, cursor: 'pointer',
-                  border: `1.5px solid ${form.direction === d.key ? '#8A6BA8' : 'var(--paper-line)'}`,
-                  background: form.direction === d.key ? '#8A6BA81a' : 'transparent',
-                  color: form.direction === d.key ? '#8A6BA8' : 'var(--slate)', fontWeight: 600, fontSize: 13,
+                  border: `1.5px solid ${form.direction === d.key ? '#B48CFF' : 'var(--paper-line)'}`,
+                  background: form.direction === d.key ? '#B48CFF1a' : 'transparent',
+                  color: form.direction === d.key ? '#B48CFF' : 'var(--slate)', fontWeight: 600, fontSize: 13,
                 }}>
                   {d.label}
                 </button>
@@ -3630,10 +3630,10 @@ function DebtsSection({
                     <td>
                       <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                         {canSettleDebt && (
-                          <button onClick={() => onSettle(e)} style={{ background: 'none', border: '1px solid #8A6BA8', color: '#8A6BA8', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Settle</button>
+                          <button onClick={() => onSettle(e)} style={{ background: 'none', border: '1px solid #B48CFF', color: '#B48CFF', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Settle</button>
                         )}
                         {canSettleDebt && (
-                          <button onClick={() => onIncreaseDebt(e)} style={{ background: 'none', border: '1px solid #8A6BA8', color: '#8A6BA8', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Add to debt</button>
+                          <button onClick={() => onIncreaseDebt(e)} style={{ background: 'none', border: '1px solid #B48CFF', color: '#B48CFF', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Add to debt</button>
                         )}
                         {canSettleDebt && balanceDue > 0.001 && (
                           <button onClick={() => onRecordPayment(e)} style={{ background: 'none', border: '1px solid var(--blue)', color: 'var(--blue)', borderRadius: 3, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>Record payment</button>
@@ -3898,7 +3898,7 @@ function KpiCard({ label, value, color, bold }) {
   return (
     <div style={{ border: '1px solid var(--paper-line)', borderRadius: 4, padding: 16, background: 'var(--card)' }}>
       <div style={{ color: 'var(--slate)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>{label}</div>
-      <div style={{ fontFamily: "'Source Serif 4', serif", fontWeight: bold ? 700 : 600, fontSize: 22, color }}>{value}</div>
+      <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: bold ? 700 : 600, fontSize: 22, color }}>{value}</div>
     </div>
   );
 }

@@ -131,8 +131,8 @@ export default function Home() {
 
         .lp .stage {
           position: relative;
-          background: radial-gradient(120% 140% at 50% -10%, #24374a 0%, var(--ink) 55%, #14202b 100%);
-          color: var(--paper); overflow: hidden; min-height: 92vh; display: flex; flex-direction: column;
+          background: radial-gradient(120% 140% at 50% -10%, #24374a 0%, var(--paper) 55%, #14202b 100%);
+          color: var(--ink); overflow: hidden; min-height: 92vh; display: flex; flex-direction: column;
         }
         .lp .stage-grid {
           position: absolute; inset: -10% -10% -10% -10%;
@@ -142,7 +142,7 @@ export default function Home() {
         @keyframes gridDrift { from { transform: translateY(0); } to { transform: translateY(46px); } }
         .lp .stage-glow {
           position: absolute; width: 620px; height: 620px; border-radius: 50%;
-          background: radial-gradient(circle, rgba(184,137,76,0.18) 0%, rgba(184,137,76,0) 70%);
+          background: radial-gradient(circle, rgba(240,180,41,0.18) 0%, rgba(240,180,41,0) 70%);
           top: -220px; right: -120px; pointer-events: none; animation: glowFloat 12s ease-in-out infinite;
         }
         @keyframes glowFloat { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-30px, 40px); } }
@@ -156,13 +156,13 @@ export default function Home() {
           max-width: 1080px; margin: 0 auto; padding: 22px 24px 0; width: 100%;
         }
         .lp .brandmark { display: flex; align-items: baseline; gap: 10px; }
-        .lp .brandmark .name { font-size: 18px; font-weight: 600; color: var(--paper); }
+        .lp .brandmark .name { font-size: 18px; font-weight: 600; color: var(--ink); }
         .lp .brandmark .tag { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); font-family: 'IBM Plex Mono', monospace; }
         .lp .navlinks { display: flex; gap: 22px; align-items: center; }
-        .lp .navlinks a { color: var(--paper); text-decoration: none; font-size: 14px; font-weight: 500; opacity: 0.85; }
+        .lp .navlinks a { color: var(--ink); text-decoration: none; font-size: 14px; font-weight: 500; opacity: 0.85; }
         .lp .btn { display: inline-block; padding: 10px 18px; border-radius: 4px; font-weight: 600; font-size: 14px; text-decoration: none; border: 1px solid transparent; cursor: pointer; }
-        .lp .btn-primary { background: var(--gold); color: var(--ink); }
-        .lp .btn-ghost { background: transparent; color: var(--paper); border-color: rgba(247,244,236,0.3); }
+        .lp .btn-primary { background: var(--gold); color: #0A0C10; }
+        .lp .btn-ghost { background: transparent; color: var(--ink); border-color: rgba(231,236,243,0.3); }
 
         .lp .ticker { position: relative; z-index: 3; border-top: 1px solid rgba(247,244,236,0.12); border-bottom: 1px solid rgba(247,244,236,0.12); overflow: hidden; white-space: nowrap; margin-top: 26px; }
         .lp .ticker-track { display: inline-flex; gap: 48px; padding: 9px 0; animation: tickerScroll 26s linear infinite; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #B9C2CB; letter-spacing: 0.03em; }
@@ -172,7 +172,7 @@ export default function Home() {
 
         .lp .hero { position: relative; z-index: 3; max-width: 1080px; margin: 0 auto; padding: 56px 24px 60px; flex: 1; display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 56px; align-items: center; }
         .lp .eyebrow { font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--gold); margin-bottom: 14px; opacity: 0; animation: fadeUp 0.7s ease forwards; animation-delay: 0.1s; }
-        .lp .hero h1 { font-size: 50px; line-height: 1.08; font-weight: 700; letter-spacing: -0.01em; color: var(--paper); margin: 0; }
+        .lp .hero h1 { font-size: 50px; line-height: 1.08; font-weight: 700; letter-spacing: -0.01em; color: var(--ink); margin: 0; }
         .lp .hero h1 .line { display: block; overflow: hidden; }
         .lp .hero h1 .line span { display: inline-block; opacity: 0; transform: translateY(100%); animation: lineUp 0.75s cubic-bezier(.22,1,.36,1) forwards; }
         .lp .hero h1 .line:nth-child(1) span { animation-delay: 0.25s; }
@@ -186,7 +186,7 @@ export default function Home() {
         @keyframes cardIn { to { opacity: 1; transform: translateY(0) scale(1); } }
         .lp .ledger-card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: linear-gradient(90deg, var(--green), var(--gold), var(--coral), var(--blue)); }
         .lp .ledger-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px; padding-top: 6px; }
-        .lp .ledger-head .title { font-family: 'Source Serif 4', serif; font-size: 15px; font-weight: 600; }
+        .lp .ledger-head .title { font-family: 'Space Grotesk', sans-serif; font-size: 15px; font-weight: 600; }
         .lp .ledger-head .date { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--slate); }
         .lp .ledger-rows { min-height: 168px; }
         .lp .ledger-row { display: grid; grid-template-columns: 74px 1fr auto; gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px dashed var(--paper-line); font-size: 13px; opacity: 0; transform: translateY(4px); animation: rowIn 0.45s ease forwards; }
@@ -233,7 +233,7 @@ export default function Home() {
         .lp .track-card.expense { border-top-color: var(--coral); }
         .lp .track-card.invest { border-top-color: var(--gold); }
         .lp .track-card.profit { border-top-color: var(--blue); }
-        .lp .track-card .k { font-family: 'Source Serif 4', serif; font-weight: 600; font-size: 17px; margin-bottom: 6px; }
+        .lp .track-card .k { font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 17px; margin-bottom: 6px; }
         .lp .track-card .d { color: var(--slate); font-size: 13px; line-height: 1.5; }
 
         .lp .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; margin-top: 30px; }
@@ -243,8 +243,8 @@ export default function Home() {
 
         .lp .cta-band { background: var(--ink); color: var(--paper); border-radius: 6px; padding: 44px 40px; display: flex; justify-content: space-between; align-items: center; gap: 24px; flex-wrap: wrap; }
         .lp .cta-band h2 { font-size: 24px; color: var(--paper); font-weight: 600; margin: 0; }
-        .lp .cta-band p { color: #C9CFD6; font-size: 14px; margin-top: 8px; }
-        .lp .cta-band .btn-primary { background: var(--gold); color: var(--ink); }
+        .lp .cta-band p { color: #3A4658; font-size: 14px; margin-top: 8px; }
+        .lp .cta-band .btn-primary { background: var(--gold); color: #0A0C10; }
 
         .lp footer { max-width: 1080px; margin: 0 auto; padding: 28px 24px 44px; display: flex; justify-content: space-between; color: var(--slate); font-size: 12px; border-top: 1px solid var(--paper-line); }
 

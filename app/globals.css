@@ -1,15 +1,15 @@
-@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 :root {
-  --ink: #1C2B39;
-  --paper: #F7F4EC;
-  --paper-line: #E4DFCF;
-  --card: #FFFEFA;
-  --gold: #B8894C;
-  --coral: #B0463F;
-  --green: #3F6E52;
-  --blue: #4C7A9E;
-  --slate: #5B6B7A;
+  --ink: #E7ECF3;
+  --paper: #0A0C10;
+  --paper-line: #232A36;
+  --card: #12151C;
+  --gold: #F0B429;
+  --coral: #FF5C7A;
+  --green: #34D399;
+  --blue: #2DE2E6;
+  --slate: #7C8AA3;
 }
 
 * { box-sizing: border-box; }
@@ -21,7 +21,16 @@ body {
   font-family: 'Inter', -apple-system, sans-serif;
 }
 
-h1, h2, h3 { font-family: 'Source Serif 4', serif; margin: 0; }
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background-image: repeating-linear-gradient(0deg, rgba(45, 226, 230, 0.02) 0px, rgba(45, 226, 230, 0.02) 1px, transparent 1px, transparent 3px);
+}
+
+h1, h2, h3 { font-family: 'Space Grotesk', sans-serif; margin: 0; letter-spacing: -0.005em; }
 
 input, select, button {
   font-family: 'Inter', sans-serif;
@@ -35,6 +44,13 @@ input, select {
   color: var(--ink);
   background: var(--card);
   width: 100%;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input:focus, select:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(45, 226, 230, 0.18);
 }
 
 button {
@@ -71,4 +87,8 @@ tbody tr:nth-child(even) {
 }
 tbody tr:nth-child(odd) {
   background: var(--card);
+}
+
+@media print {
+  body::before { display: none; }
 }

@@ -131,7 +131,7 @@ export default function AdminPage() {
 
   return (
     <div style={{ minHeight: '100vh' }}>
-      <div style={{ height: 4, background: 'linear-gradient(90deg, #3F6E52, #B8894C, #B0463F, #4C7A9E)' }} />
+      <div style={{ height: 4, background: 'linear-gradient(90deg, var(--green), var(--gold), var(--coral), var(--blue))' }} />
       <header style={{ borderBottom: '1px solid var(--paper-line)', padding: '26px 24px 18px' }}>
         <div style={{ maxWidth: 1080, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 12 }}>
           <div>
@@ -146,7 +146,7 @@ export default function AdminPage() {
 
       <main style={{ maxWidth: 1080, margin: '0 auto', padding: '28px 24px 80px' }}>
         {error && (
-          <div style={{ background: '#FBEAE8', border: '1px solid var(--coral)', color: 'var(--coral)', borderRadius: 4, padding: '12px 16px', fontSize: 13, marginBottom: 24 }}>
+          <div style={{ background: 'rgba(255,92,122,0.1)', border: '1px solid var(--coral)', color: 'var(--coral)', borderRadius: 4, padding: '12px 16px', fontSize: 13, marginBottom: 24 }}>
             {error}
           </div>
         )}
