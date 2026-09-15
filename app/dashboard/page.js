@@ -2985,7 +2985,7 @@ export default function Dashboard() {
                 const balanceDue = Math.max(0, combinedTotal - amountPaid);
                 return (
                   <>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', border: '1px solid #c7c7c7', marginTop: 18 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', border: '1px solid #c7c7c7', marginTop: 18, color: '#12202b' }}>
                       <div style={{ padding: '10px 12px', borderRight: '1px solid #c7c7c7' }}>
                         <div style={{ fontSize: 11, fontWeight: 800, color: '#12202b' }}>TYPE</div>
                         <div style={{ fontSize: 13, marginTop: 2 }}>{multiItem ? 'Sale (multiple items)' : TYPES.find((t) => t.key === primary.type)?.label}</div>
@@ -3087,7 +3087,7 @@ export default function Dashboard() {
                     )}
 
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 26 }}>
-                      <div style={{ width: 220 }}>
+                      <div style={{ width: 220, color: '#12202b' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 13 }}>
                           <span>Subtotal</span><span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(combinedTotal)}</span>
                         </div>
@@ -3221,7 +3221,7 @@ export default function Dashboard() {
               </table>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 26 }}>
-                <div style={{ width: 220 }}>
+                <div style={{ width: 220, color: '#12202b' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: 15, fontWeight: 700, borderTop: '1px solid #12202b' }}>
                     <span>Total cost</span>
                     <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(Number(printingInvItem.quantity) * Number(printingInvItem.unit_cost))}</span>
