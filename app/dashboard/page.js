@@ -2985,7 +2985,7 @@ export default function Dashboard() {
                 const balanceDue = Math.max(0, combinedTotal - amountPaid);
                 return (
                   <>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', border: '1px solid #c7c7c7', marginTop: 18 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', border: '1px solid #c7c7c7', marginTop: 18, color: '#12202b' }}>
                       <div style={{ padding: '10px 12px', borderRight: '1px solid #c7c7c7' }}>
                         <div style={{ fontSize: 11, fontWeight: 800, color: '#12202b' }}>TYPE</div>
                         <div style={{ fontSize: 13, marginTop: 2 }}>{multiItem ? 'Sale (multiple items)' : TYPES.find((t) => t.key === primary.type)?.label}</div>
@@ -3023,7 +3023,7 @@ export default function Dashboard() {
                             <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b', textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(invoiceAmountUsd(e))}</td>
                             {invoiceEntries.length > 1 && (
                               <td className="no-print" style={{ padding: '10px 0 10px 10px', textAlign: 'right' }}>
-                                <button onClick={() => removeInvoiceItem(e.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 16, lineHeight: 1, padding: 4, cursor: 'pointer' }}>×</button>
+                                <button onClick={() => removeInvoiceItem(e.id)} style={{ background: 'none', border: 'none', color: '#5B6B7A', fontSize: 16, lineHeight: 1, padding: 4, cursor: 'pointer' }}>×</button>
                               </td>
                             )}
                           </tr>
@@ -3033,8 +3033,8 @@ export default function Dashboard() {
 
                     {isSaleInvoice && (
                       <div className="no-print" style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'center', fontSize: 13 }}>
-                        <span style={{ color: 'var(--slate)' }}>Include same-customer items within</span>
-                        <select value={invoiceGroupDays} onChange={(e) => expandInvoiceGroup(Number(e.target.value))} style={{ fontSize: 13 }}>
+                        <span style={{ color: '#5B6B7A' }}>Include same-customer items within</span>
+                        <select value={invoiceGroupDays} onChange={(e) => expandInvoiceGroup(Number(e.target.value))} style={{ fontSize: 13, background: '#fff', color: '#12202b', border: '1px solid #c7c7c7' }}>
                           <option value={0}>Same day</option>
                           <option value={3}>3 days</option>
                           <option value={7}>7 days</option>
@@ -3046,15 +3046,15 @@ export default function Dashboard() {
 
                     {isSaleInvoice && addCandidates.length > 0 && (
                       <div className="no-print" style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
-                        <select value={invoiceAddId} onChange={(e) => setInvoiceAddId(e.target.value)} style={{ flex: 1, fontSize: 13 }}>
+                        <select value={invoiceAddId} onChange={(e) => setInvoiceAddId(e.target.value)} style={{ flex: 1, fontSize: 13, background: '#fff', color: '#12202b', border: '1px solid #c7c7c7' }}>
                           <option value="">+ Add another item…</option>
                           {addCandidates.map((e) => (
                             <option key={e.id} value={e.id}>{e.product} — {e.where_text || 'No customer'} — {e.entry_date} — {fmtUSD(invoiceAmountUsd(e))}</option>
                           ))}
                         </select>
                         <button type="button" onClick={() => invoiceAddId && addInvoiceItem(invoiceAddId)} disabled={!invoiceAddId} style={{
-                          padding: '8px 14px', border: '1px solid var(--paper-line)', borderRadius: 4,
-                          background: 'transparent', color: 'var(--ink)', fontWeight: 600, fontSize: 13, opacity: invoiceAddId ? 1 : 0.5,
+                          padding: '8px 14px', border: '1px solid #c7c7c7', borderRadius: 4,
+                          background: 'transparent', color: '#12202b', fontWeight: 600, fontSize: 13, opacity: invoiceAddId ? 1 : 0.5,
                         }}>
                           Add
                         </button>
@@ -3074,7 +3074,7 @@ export default function Dashboard() {
                                   <td style={{ padding: '4px 0', fontSize: 12, color: '#12202b' }}>{p.payment_method || '—'}</td>
                                   <td style={{ padding: '4px 0', fontSize: 12, color: '#12202b', textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(Number(p.usd))}</td>
                                   <td className="no-print" style={{ padding: '4px 0 4px 10px', textAlign: 'right' }}>
-                                    <button onClick={() => toggleInvoicePayment(p.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: excluded ? 11 : 16, lineHeight: 1, padding: 4, cursor: 'pointer' }}>
+                                    <button onClick={() => toggleInvoicePayment(p.id)} style={{ background: 'none', border: 'none', color: '#5B6B7A', fontSize: excluded ? 11 : 16, lineHeight: 1, padding: 4, cursor: 'pointer' }}>
                                       {excluded ? 'Show' : '×'}
                                     </button>
                                   </td>
@@ -3087,7 +3087,7 @@ export default function Dashboard() {
                     )}
 
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 26 }}>
-                      <div style={{ width: 220 }}>
+                      <div style={{ width: 220, color: '#12202b' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 13 }}>
                           <span>Subtotal</span><span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(combinedTotal)}</span>
                         </div>
@@ -3099,10 +3099,10 @@ export default function Dashboard() {
                         </div>
                         {amountPaid > 0.001 && (
                           <>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 13, color: 'var(--green)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 13, color: '#1c6b52' }}>
                               <span>Amount paid</span><span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>-{fmtUSD(amountPaid)}</span>
                             </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: 15, fontWeight: 700, borderTop: '1px solid #12202b', marginTop: 4, color: balanceDue > 0.001 ? 'var(--coral)' : 'var(--green)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: 15, fontWeight: 700, borderTop: '1px solid #12202b', marginTop: 4, color: balanceDue > 0.001 ? '#B0463F' : '#1c6b52' }}>
                               <span>Balance due</span><span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(balanceDue)}</span>
                             </div>
                           </>
@@ -3114,10 +3114,10 @@ export default function Dashboard() {
               })()}
 
               <div className="no-print" style={{ display: 'flex', gap: 10, marginTop: 30 }}>
-                <button onClick={() => setInvoiceEntries([])} style={{ flex: 1, padding: '11px 16px', border: '1px solid var(--paper-line)', borderRadius: 4, background: 'transparent', color: 'var(--slate)', fontWeight: 600 }}>
+                <button onClick={() => setInvoiceEntries([])} style={{ flex: 1, padding: '11px 16px', border: '1px solid #c7c7c7', borderRadius: 4, background: 'transparent', color: '#5B6B7A', fontWeight: 600 }}>
                   Close
                 </button>
-                <button onClick={() => window.print()} style={{ flex: 1, padding: '11px 16px', border: 'none', borderRadius: 4, background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600 }}>
+                <button onClick={() => window.print()} style={{ flex: 1, padding: '11px 16px', border: 'none', borderRadius: 4, background: '#12202b', color: '#fff', fontWeight: 600 }}>
                   Print / Save as PDF
                 </button>
               </div>
@@ -3221,7 +3221,7 @@ export default function Dashboard() {
               </table>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 26 }}>
-                <div style={{ width: 220 }}>
+                <div style={{ width: 220, color: '#12202b' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: 15, fontWeight: 700, borderTop: '1px solid #12202b' }}>
                     <span>Total cost</span>
                     <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(Number(printingInvItem.quantity) * Number(printingInvItem.unit_cost))}</span>
@@ -3230,10 +3230,10 @@ export default function Dashboard() {
               </div>
 
               <div className="no-print" style={{ display: 'flex', gap: 10, marginTop: 30 }}>
-                <button onClick={() => setPrintingInvItem(null)} style={{ flex: 1, padding: '11px 16px', border: '1px solid var(--paper-line)', borderRadius: 4, background: 'transparent', color: 'var(--slate)', fontWeight: 600 }}>
+                <button onClick={() => setPrintingInvItem(null)} style={{ flex: 1, padding: '11px 16px', border: '1px solid #c7c7c7', borderRadius: 4, background: 'transparent', color: '#5B6B7A', fontWeight: 600 }}>
                   Close
                 </button>
-                <button onClick={() => window.print()} style={{ flex: 1, padding: '11px 16px', border: 'none', borderRadius: 4, background: 'var(--ink)', color: 'var(--paper)', fontWeight: 600 }}>
+                <button onClick={() => window.print()} style={{ flex: 1, padding: '11px 16px', border: 'none', borderRadius: 4, background: '#12202b', color: '#fff', fontWeight: 600 }}>
                   Print / Save as PDF
                 </button>
               </div>

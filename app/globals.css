@@ -93,6 +93,21 @@ tbody tr:nth-child(odd) {
   body::before { display: none; }
 }
 
+/* Printed documents (sale invoices, inventory cost records) always render as a
+   plain light page, regardless of the app's on-screen theme — every color in
+   them is a literal value, but the *table* rules above are element-based and
+   were still leaking in (a dark alternating-row background under invoice text
+   pinned to dark ink is unreadable). Reset those here. */
+.invoice-print thead tr, .inv-print-card thead tr {
+  background: none; color: inherit; font-family: inherit; font-size: inherit;
+  text-transform: none; letter-spacing: normal;
+}
+.invoice-print tbody tr, .inv-print-card tbody tr { border-bottom: none; }
+.invoice-print tbody tr:nth-child(even), .invoice-print tbody tr:nth-child(odd),
+.inv-print-card tbody tr:nth-child(even), .inv-print-card tbody tr:nth-child(odd) {
+  background: transparent;
+}
+
 /* Recharts dark-theme legibility (class-based fallback; explicit props are
    also passed where charts are rendered — this just catches anything they miss) */
 .recharts-cartesian-axis-tick text { fill: var(--slate); }
