@@ -1504,6 +1504,7 @@ export default function Dashboard() {
       <header style={{ borderBottom: '1px solid var(--paper-line)', padding: '26px 24px 18px' }}>
         <div style={{ maxWidth: 1080, margin: '0 auto', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <img src="/logo.png" alt="Running Account" style={{ height: 44, width: 44, borderRadius: 8 }} />
             <div>
               <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: '0.14em', color: 'var(--gold)', textTransform: 'uppercase', marginBottom: 6 }}>
                 Ledger No. 02
@@ -2879,7 +2880,8 @@ export default function Dashboard() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <h1 style={{ fontFamily: "'Source Serif 4', serif", fontSize: 30, fontWeight: 800, color: '#12202b', letterSpacing: '0.01em' }}>INVOICE</h1>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontFamily: "'Source Serif 4', serif", fontStyle: 'italic', fontWeight: 700, fontSize: 19, color: '#12202b' }}>
+                  <img src="/logo.png" alt="Running Account" style={{ height: 36, width: 36, borderRadius: 6, marginLeft: 'auto' }} />
+                  <div style={{ fontFamily: "'Source Serif 4', serif", fontStyle: 'italic', fontWeight: 700, fontSize: 15, color: '#12202b', marginTop: 4 }}>
                     The Running Account
                   </div>
                 </div>
@@ -3128,7 +3130,8 @@ export default function Dashboard() {
                     <div style={{ fontSize: 11, color: '#12202b', opacity: 0.7, marginTop: 2 }}>Internal record of what this item cost — not for the customer</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontFamily: "'Source Serif 4', serif", fontStyle: 'italic', fontWeight: 700, fontSize: 19, color: '#12202b' }}>
+                    <img src="/logo.png" alt="Running Account" style={{ height: 36, width: 36, borderRadius: 6, marginLeft: 'auto' }} />
+                    <div style={{ fontFamily: "'Source Serif 4', serif", fontStyle: 'italic', fontWeight: 700, fontSize: 15, color: '#12202b', marginTop: 4 }}>
                       The Running Account
                     </div>
                   </div>
