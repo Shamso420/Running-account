@@ -241,7 +241,6 @@ export default function Dashboard() {
 
   const canEdit = !useRoles || role === 'admin';
   const canAdd = !useRoles || role === 'admin' || role === 'entry';
-  const is360Cell = session?.user?.email === 'info360cell@gmail.com';
   const canSettleDebt = !useRoles || role === 'admin' || role === 'entry';
   const canDeleteEntry = !useRoles || role === 'admin' || role === 'entry';
   const [goals, setGoals] = useState([]);
@@ -1290,7 +1289,7 @@ export default function Dashboard() {
     entries.filter((e) => e.type === 'expense' && !e.cost_section).forEach((e) => { m[e.category] = (m[e.category] || 0) + Number(e.usd); });
     const costsTotal = entries.filter((e) => e.type === 'expense' && e.cost_section === 'cost').reduce((s, e) => s + Number(e.usd), 0);
     const wagesTotal = entries.filter((e) => e.type === 'expense' && e.cost_section === 'wage').reduce((s, e) => s + Number(e.usd), 0);
-    if (costsTotal > 0) m['360 Cell costs'] = costsTotal;
+    if (costsTotal > 0) m['Costs'] = costsTotal;
     if (wagesTotal > 0) m['Wages'] = wagesTotal;
     return Object.entries(m).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
   }, [entries]);
@@ -1456,11 +1455,6 @@ export default function Dashboard() {
     if (!loading && !canAdd && tab === 'add') setTab('ledger');
   }, [canAdd, loading, tab]);
 
-  const OTHER_ACCOUNT_RESTRICTED_TABS = ['dashboard', 'daily', 'monthly', 'costs', 'wages', 'partnerDebts', 'inventory', 'journal', 'goals'];
-  useEffect(() => {
-    if (!loading && !is360Cell && OTHER_ACCOUNT_RESTRICTED_TABS.includes(tab)) setTab('ledger');
-  }, [is360Cell, loading, tab]);
-
   if (session === undefined || loading) {
     return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading…</div>;
   }
@@ -1506,15 +1500,12 @@ export default function Dashboard() {
     <div style={{ minHeight: '100vh' }}>
     {invoiceEntries.length === 0 && !printingInvItem && (
     <>
-      <div style={{ height: 4, background: is360Cell ? 'linear-gradient(90deg, var(--blue), #7DF9FF)' : 'linear-gradient(90deg, var(--green), var(--gold), var(--coral), var(--blue))' }} />
+      <div style={{ height: 4, background: 'linear-gradient(90deg, var(--green), var(--gold), var(--coral), var(--blue))' }} />
       <header style={{ borderBottom: '1px solid var(--paper-line)', padding: '26px 24px 18px' }}>
         <div style={{ maxWidth: 1080, margin: '0 auto', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            {is360Cell && (
-              <img src="/logo-360cell.png" alt="360 Cell" style={{ height: 44, width: 'auto', borderRadius: 6 }} />
-            )}
             <div>
-              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: '0.14em', color: is360Cell ? 'var(--blue)' : 'var(--gold)', textTransform: 'uppercase', marginBottom: 6 }}>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: '0.14em', color: 'var(--gold)', textTransform: 'uppercase', marginBottom: 6 }}>
                 Ledger No. 02
               </div>
               <h1 style={{ fontSize: 30 }}>The Running Account</h1>
@@ -1543,20 +1534,20 @@ export default function Dashboard() {
           {[
             ...(canAdd ? [{ key: 'add', label: 'Add entry' }] : []),
             { key: 'ledger', label: 'Ledger' },
-            ...(is360Cell ? [{ key: 'dashboard', label: 'Dashboard' }] : []),
-            ...(is360Cell ? [{ key: 'daily', label: 'Report' }] : []),
-            ...(is360Cell ? [{ key: 'monthly', label: 'Monthly' }] : []),
-            ...(is360Cell ? [{ key: 'costs', label: '360 Cell Costs' }] : []),
-            ...(is360Cell ? [{ key: 'wages', label: 'Wages' }] : []),
+            { key: 'dashboard', label: 'Dashboard' },
+            { key: 'daily', label: 'Report' },
+            { key: 'monthly', label: 'Monthly' },
+            { key: 'costs', label: 'Costs' },
+            { key: 'wages', label: 'Wages' },
             { key: 'debts', label: 'Debts' },
-            ...(is360Cell ? [{ key: 'partnerDebts', label: '360 Debts' }] : []),
-            ...(is360Cell ? [{ key: 'inventory', label: 'Inventory' }] : []),
-            ...(is360Cell ? [{ key: 'journal', label: 'Journal' }] : []),
-            ...(is360Cell && plan === 'business' ? [{ key: 'goals', label: 'Goals' }] : []),
+            { key: 'partnerDebts', label: 'Partner Debts' },
+            { key: 'inventory', label: 'Inventory' },
+            { key: 'journal', label: 'Journal' },
+            ...(plan === 'business' ? [{ key: 'goals', label: 'Goals' }] : []),
           ].map((t) => (
             <button key={t.key} onClick={() => { if (t.key === 'add') cancelEditEntry(); setTab(t.key); }} style={{
               padding: '9px 16px', border: 'none', cursor: 'pointer',
-              background: tab === t.key ? (is360Cell ? 'var(--blue)' : 'var(--ink)') : 'transparent',
+              background: tab === t.key ? 'var(--ink)' : 'transparent',
               color: tab === t.key ? 'var(--paper)' : 'var(--slate)',
               fontWeight: 500, borderRadius: '3px 3px 0 0',
             }}>
@@ -1589,7 +1580,7 @@ export default function Dashboard() {
             </p>
             <form onSubmit={addEntry} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {(is360Cell ? TYPES : TYPES.filter((t) => t.key !== 'sale')).map((t) => (
+                {TYPES.map((t) => (
                   <button type="button" key={t.key} disabled={!!editingEntryId}
                     onClick={() => { setForm((f) => ({ ...f, type: t.key, category: '', product: '', cost: '', receivedNow: '', supplier: '', paymentMethod: 'Cash', quantity: '1', imei: '', serialNumber: '' })); setExtraSaleItems([]); }} style={{
                     padding: '8px 14px', borderRadius: 20, cursor: editingEntryId ? 'default' : 'pointer',
@@ -1692,7 +1683,7 @@ export default function Dashboard() {
                 </label>
               )}
 
-              {form.type === 'investment' && is360Cell && (
+              {form.type === 'investment' && (
                 <div>
                   <div style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, marginBottom: 6 }}>
                     Sold to (optional)
@@ -1719,14 +1710,6 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {form.type === 'investment' && !is360Cell && (
-                <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
-                  Sold to (optional)
-                  <input placeholder="e.g. Karim" value={form.where}
-                    onChange={(e) => setForm((f) => ({ ...f, where: e.target.value }))} style={{ marginTop: 6 }} />
-                </label>
-              )}
-
               {form.type === 'investment' && (
                 <div style={{ display: 'flex', gap: 12 }}>
                   <label style={{ flex: 1, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
@@ -1750,7 +1733,7 @@ export default function Dashboard() {
                 </label>
               )}
 
-              {form.type !== 'investment' && is360Cell && (
+              {form.type !== 'investment' && (
                 <div>
                   <div style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, marginBottom: 6 }}>
                     {form.type === 'sale' ? 'Sold to (customer)' : 'Customer'}
@@ -1777,13 +1760,6 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {form.type !== 'investment' && !is360Cell && (
-                <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
-                  {form.type === 'debt' ? 'Who this is with (optional)' : 'Name (optional)'}
-                  <input placeholder="e.g. Karim" value={form.where}
-                    onChange={(e) => setForm((f) => ({ ...f, where: e.target.value }))} style={{ marginTop: 6 }} />
-                </label>
-              )}
               <div style={{ display: 'flex', gap: 12 }}>
                 <label style={{ flex: 1, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
                   {form.type === 'sale' ? 'Selling price' : 'Amount'}
@@ -1946,7 +1922,7 @@ export default function Dashboard() {
                   g.entries.filter((e) => !e.cost_section).forEach((e) => { catMap[e.category] = (catMap[e.category] || 0) + Number(e.usd); });
                   const costsTotal = g.entries.filter((e) => e.cost_section === 'cost').reduce((s, e) => s + Number(e.usd), 0);
                   const wagesTotal = g.entries.filter((e) => e.cost_section === 'wage').reduce((s, e) => s + Number(e.usd), 0);
-                  if (costsTotal > 0) catMap['360 Cell costs'] = costsTotal;
+                  if (costsTotal > 0) catMap['Costs'] = costsTotal;
                   if (wagesTotal > 0) catMap['Wages'] = wagesTotal;
                   const catData = Object.entries(catMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
                   return (
@@ -2113,7 +2089,7 @@ export default function Dashboard() {
             <div className="hud-bar">
               <div className="hud-left"><span className="hud-pulse" /> LEDGER-02 &middot; SYNCED</div>
               <div className="hud-right">
-                <span>ACCOUNT <b>{is360Cell ? '360 CELL' : 'PERSONAL'}</b></span>
+                <span>ACCOUNT <b>{session.user.email}</b></span>
                 <span>ENTRIES <b>{entries.length}</b></span>
                 <span>PERIOD <b>ALL TIME</b></span>
               </div>
@@ -2238,7 +2214,7 @@ export default function Dashboard() {
 
         {tab === 'costs' && (
           <RecurringCostSection
-            title="360 Cell cost" placeholder="Description" entries={costEntries}
+            title="cost" placeholder="Description" entries={costEntries}
             form={costForm} setForm={setCostForm} error={costError} saving={savingCost}
             onSubmit={() => addRecurringCost('cost', costForm, setCostForm)}
             canAdd={canAdd} canEdit={canDeleteEntry} onEdit={editRecurringCost}
@@ -2266,7 +2242,7 @@ export default function Dashboard() {
             openDebts={openDebts} settledDebts={settledDebts}
             canSettleDebt={canSettleDebt} onSettle={settleDebt} onIncreaseDebt={openIncreaseDebt} onRecordPayment={openRecordPayment}
             canDeleteEntry={canDeleteEntry} onEdit={startEditEntry} confirmDeleteId={confirmDeleteId} setConfirmDeleteId={setConfirmDeleteId} onDelete={deleteEntry}
-            is360Cell={is360Cell} onOpenCustomerPicker={() => openCustomerPicker('debt')} onClearCustomer={() => clearCustomer('debt')}
+            onOpenCustomerPicker={() => openCustomerPicker('debt')} onClearCustomer={() => clearCustomer('debt')}
           />
         )}
 
@@ -2280,7 +2256,7 @@ export default function Dashboard() {
             openDebts={openPartnerDebts} settledDebts={settledPartnerDebts}
             canSettleDebt={canSettleDebt} onSettle={settleDebt} onIncreaseDebt={openIncreaseDebt} onRecordPayment={openRecordPayment}
             canDeleteEntry={canDeleteEntry} onEdit={startEditEntry} confirmDeleteId={confirmDeleteId} setConfirmDeleteId={setConfirmDeleteId} onDelete={deleteEntry}
-            is360Cell={is360Cell} onOpenCustomerPicker={() => openCustomerPicker('partnerDebt')} onClearCustomer={() => clearCustomer('partnerDebt')}
+            onOpenCustomerPicker={() => openCustomerPicker('partnerDebt')} onClearCustomer={() => clearCustomer('partnerDebt')}
           />
         )}
 
@@ -2711,36 +2687,28 @@ export default function Dashboard() {
               Sale date
               <input type="date" value={sellForm.date} onChange={(e) => setSellForm((f) => ({ ...f, date: e.target.value }))} style={{ marginTop: 6 }} />
             </label>
-            {is360Cell ? (
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, marginBottom: 6 }}>Sold to (optional)</div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <div style={{
-                    flex: 1, padding: '10px 12px', border: '1px solid var(--paper-line)', borderRadius: 4,
-                    fontSize: 14, color: sellForm.soldTo ? 'var(--ink)' : 'var(--slate)', background: 'var(--card)',
-                  }}>
-                    {sellForm.soldTo || 'No customer selected'}
-                  </div>
-                  <button type="button" onClick={() => openCustomerPicker('sell')} style={{
-                    padding: '10px 14px', border: '1px solid var(--paper-line)', borderRadius: 4,
-                    background: 'transparent', color: 'var(--ink)', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap',
-                  }}>
-                    Select customer
-                  </button>
-                  {sellForm.soldTo && (
-                    <button type="button" onClick={() => clearCustomer('sell')} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 18, padding: '0 4px' }}>
-                      ×
-                    </button>
-                  )}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, marginBottom: 6 }}>Sold to (optional)</div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{
+                  flex: 1, padding: '10px 12px', border: '1px solid var(--paper-line)', borderRadius: 4,
+                  fontSize: 14, color: sellForm.soldTo ? 'var(--ink)' : 'var(--slate)', background: 'var(--card)',
+                }}>
+                  {sellForm.soldTo || 'No customer selected'}
                 </div>
+                <button type="button" onClick={() => openCustomerPicker('sell')} style={{
+                  padding: '10px 14px', border: '1px solid var(--paper-line)', borderRadius: 4,
+                  background: 'transparent', color: 'var(--ink)', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap',
+                }}>
+                  Select customer
+                </button>
+                {sellForm.soldTo && (
+                  <button type="button" onClick={() => clearCustomer('sell')} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 18, padding: '0 4px' }}>
+                    ×
+                  </button>
+                )}
               </div>
-            ) : (
-              <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, display: 'block', marginBottom: 14 }}>
-                Sold to (optional)
-                <input placeholder="e.g. Karim" value={sellForm.soldTo}
-                  onChange={(e) => setSellForm((f) => ({ ...f, soldTo: e.target.value }))} style={{ marginTop: 6 }} />
-              </label>
-            )}
+            </div>
 
             {sellForm.amount && !Number.isNaN(parseFloat(sellForm.amount)) && (
               (() => {
@@ -2911,16 +2879,9 @@ export default function Dashboard() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <h1 style={{ fontFamily: "'Source Serif 4', serif", fontSize: 30, fontWeight: 800, color: '#12202b', letterSpacing: '0.01em' }}>INVOICE</h1>
                 <div style={{ textAlign: 'right' }}>
-                  {is360Cell ? (
-                    <>
-                      <img src="/logo-360cell.png" alt="360 Cell" style={{ height: 40, width: 'auto', borderRadius: 5, marginLeft: 'auto' }} />
-                      <div style={{ fontSize: 12, fontWeight: 700, color: '#12202b', marginTop: 6 }}>Phone: +961 81 055 797</div>
-                    </>
-                  ) : (
-                    <div style={{ fontFamily: "'Source Serif 4', serif", fontStyle: 'italic', fontWeight: 700, fontSize: 19, color: '#12202b' }}>
-                      The Running Account
-                    </div>
-                  )}
+                  <div style={{ fontFamily: "'Source Serif 4', serif", fontStyle: 'italic', fontWeight: 700, fontSize: 19, color: '#12202b' }}>
+                    The Running Account
+                  </div>
                 </div>
               </div>
 
@@ -3167,13 +3128,9 @@ export default function Dashboard() {
                     <div style={{ fontSize: 11, color: '#12202b', opacity: 0.7, marginTop: 2 }}>Internal record of what this item cost — not for the customer</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    {is360Cell ? (
-                      <img src="/logo-360cell.png" alt="360 Cell" style={{ height: 40, width: 'auto', borderRadius: 5, marginLeft: 'auto' }} />
-                    ) : (
-                      <div style={{ fontFamily: "'Source Serif 4', serif", fontStyle: 'italic', fontWeight: 700, fontSize: 19, color: '#12202b' }}>
-                        The Running Account
-                      </div>
-                    )}
+                    <div style={{ fontFamily: "'Source Serif 4', serif", fontStyle: 'italic', fontWeight: 700, fontSize: 19, color: '#12202b' }}>
+                      The Running Account
+                    </div>
                   </div>
                 </div>
 
@@ -3487,7 +3444,7 @@ function DebtsSection({
   openDebts, settledDebts,
   canSettleDebt, onSettle, onIncreaseDebt, onRecordPayment,
   canDeleteEntry, onEdit, confirmDeleteId, setConfirmDeleteId, onDelete,
-  is360Cell, onOpenCustomerPicker, onClearCustomer,
+  onOpenCustomerPicker, onClearCustomer,
 }) {
   const [openDebtsFilter, setOpenDebtsFilter] = useState('all');
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -3529,35 +3486,28 @@ function DebtsSection({
               Date
               <input type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} style={{ marginTop: 6 }} />
             </label>
-            {is360Cell ? (
-              <div style={{ flex: 1, minWidth: 220 }}>
-                <div style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, marginBottom: 6 }}>{addPersonLabel}</div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <div style={{
-                    flex: 1, padding: '10px 12px', border: '1px solid var(--paper-line)', borderRadius: 4,
-                    fontSize: 14, color: form.customerId ? 'var(--ink)' : 'var(--slate)', background: 'var(--card)',
-                  }}>
-                    {form.who || 'No customer selected'}
-                  </div>
-                  <button type="button" onClick={onOpenCustomerPicker} style={{
-                    padding: '10px 14px', border: '1px solid var(--paper-line)', borderRadius: 4,
-                    background: 'transparent', color: 'var(--ink)', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap',
-                  }}>
-                    Select customer
-                  </button>
-                  {form.customerId && (
-                    <button type="button" onClick={onClearCustomer} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 18, padding: '0 4px' }}>
-                      ×
-                    </button>
-                  )}
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <div style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500, marginBottom: 6 }}>{addPersonLabel}</div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{
+                  flex: 1, padding: '10px 12px', border: '1px solid var(--paper-line)', borderRadius: 4,
+                  fontSize: 14, color: form.customerId ? 'var(--ink)' : 'var(--slate)', background: 'var(--card)',
+                }}>
+                  {form.who || 'No customer selected'}
                 </div>
+                <button type="button" onClick={onOpenCustomerPicker} style={{
+                  padding: '10px 14px', border: '1px solid var(--paper-line)', borderRadius: 4,
+                  background: 'transparent', color: 'var(--ink)', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap',
+                }}>
+                  Select customer
+                </button>
+                {form.customerId && (
+                  <button type="button" onClick={onClearCustomer} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 18, padding: '0 4px' }}>
+                    ×
+                  </button>
+                )}
               </div>
-            ) : (
-              <label style={{ flex: 1, minWidth: 160, fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
-                {addPersonLabel}
-                <input value={form.who} onChange={(e) => setForm((f) => ({ ...f, who: e.target.value }))} style={{ marginTop: 6 }} />
-              </label>
-            )}
+            </div>
             <div style={{ display: 'flex', gap: 6 }}>
               {[
                 { key: 'owed_to_me', label: 'Owed to me' },
