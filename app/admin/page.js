@@ -219,7 +219,7 @@ export default function AdminPage() {
                   <tr key={e.id}>
                     <td>{emailFor(e.user_id)}</td>
                     <td>{e.entry_date}</td>
-                    <td><span style={{ color: typeInfo.color, fontWeight: 600 }}>{typeInfo.label}</span></td>
+                    <td><span style={{ color: typeInfo?.color || 'var(--slate)', fontWeight: 600 }}>{typeInfo?.label || e.type}</span></td>
                     <td>{e.category}</td>
                     <td>{e.where_text || '—'}</td>
                     <td style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmtLBP(e.lbp)}</td>
