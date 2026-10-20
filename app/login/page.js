@@ -90,6 +90,12 @@ export default function LoginPage() {
         <p style={{ fontSize: 12, color: 'var(--slate)', textAlign: 'center', marginTop: 20 }}>
           Your password is verified by Supabase and never stored or visible in this app's code.
         </p>
+
+        <p style={{ fontSize: 12, color: 'var(--slate)', textAlign: 'center', marginTop: 12, display: 'flex', gap: 14, justifyContent: 'center' }}>
+          <a href="/privacy" style={{ color: 'var(--slate)' }}>Privacy</a>
+          <a href="/terms" style={{ color: 'var(--slate)' }}>Terms</a>
+          <a href="/cookies" style={{ color: 'var(--slate)' }}>Cookies</a>
+        </p>
       </div>
     </div>
   );
