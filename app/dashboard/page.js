@@ -309,6 +309,7 @@ export default function Dashboard() {
   );
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('add');
+  const [navMenuOpen, setNavMenuOpen] = useState(null);
   const [form, setForm] = useState(emptyForm());
   const [extraSaleItems, setExtraSaleItems] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -1531,22 +1532,12 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <nav style={{ maxWidth: 1080, margin: '20px auto 0', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+        <nav style={{ maxWidth: 1080, margin: '20px auto 0', display: 'flex', flexWrap: 'wrap', gap: 4, position: 'relative' }}>
           {[
             ...(canAdd ? [{ key: 'add', label: 'Add entry' }] : []),
             { key: 'ledger', label: 'Ledger' },
-            { key: 'dashboard', label: 'Dashboard' },
-            { key: 'daily', label: 'Report' },
-            { key: 'monthly', label: 'Monthly' },
-            { key: 'costs', label: 'Costs' },
-            { key: 'wages', label: 'Wages' },
-            { key: 'debts', label: 'Debts' },
-            { key: 'partnerDebts', label: 'Partner Debts' },
-            { key: 'inventory', label: 'Inventory' },
-            { key: 'journal', label: 'Journal' },
-            ...(plan === 'business' ? [{ key: 'goals', label: 'Goals' }] : []),
           ].map((t) => (
-            <button key={t.key} onClick={() => { if (t.key === 'add') cancelEditEntry(); setTab(t.key); }} style={{
+            <button key={t.key} onClick={() => { if (t.key === 'add') cancelEditEntry(); setTab(t.key); setNavMenuOpen(null); }} style={{
               padding: '9px 16px', border: 'none', cursor: 'pointer',
               background: tab === t.key ? 'var(--ink)' : 'transparent',
               color: tab === t.key ? 'var(--paper)' : 'var(--slate)',
@@ -1555,6 +1546,78 @@ export default function Dashboard() {
               {t.label}
             </button>
           ))}
+
+          {[
+            { group: 'reports', label: 'Reports', items: [
+              { key: 'dashboard', label: 'Dashboard' },
+              { key: 'daily', label: 'Report' },
+              { key: 'monthly', label: 'Monthly' },
+              ...(plan === 'business' ? [{ key: 'goals', label: 'Goals' }] : []),
+            ] },
+            { group: 'money', label: 'Money', items: [
+              { key: 'costs', label: 'Costs' },
+              { key: 'wages', label: 'Wages' },
+              { key: 'debts', label: 'Debts' },
+              { key: 'partnerDebts', label: 'Partner Debts' },
+            ] },
+          ].map((g) => {
+            const active = g.items.some((i) => i.key === tab);
+            const open = navMenuOpen === g.group;
+            return (
+              <div key={g.group} style={{ position: 'relative' }}>
+                <button
+                  onClick={() => setNavMenuOpen(open ? null : g.group)}
+                  style={{
+                    padding: '9px 16px', border: 'none', cursor: 'pointer',
+                    background: active || open ? 'var(--ink)' : 'transparent',
+                    color: active || open ? 'var(--paper)' : 'var(--slate)',
+                    fontWeight: 500, borderRadius: '3px 3px 0 0',
+                    display: 'flex', alignItems: 'center', gap: 5,
+                  }}
+                >
+                  {g.label}
+                  <span style={{ fontSize: 10, transform: open ? 'rotate(180deg)' : 'none' }}>▾</span>
+                </button>
+                {open && (
+                  <>
+                    <div onClick={() => setNavMenuOpen(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                    <div style={{
+                      position: 'absolute', top: '100%', left: 0, marginTop: 4, minWidth: 170, zIndex: 41,
+                      background: 'var(--card)', border: '1px solid var(--paper-line)', borderRadius: 4,
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.3)', overflow: 'hidden',
+                    }}>
+                      {g.items.map((t) => (
+                        <button key={t.key} onClick={() => { setTab(t.key); setNavMenuOpen(null); }} style={{
+                          display: 'block', width: '100%', textAlign: 'left',
+                          padding: '10px 14px', border: 'none', cursor: 'pointer',
+                          background: tab === t.key ? 'var(--paper)' : 'transparent',
+                          color: tab === t.key ? 'var(--ink)' : 'var(--slate)',
+                          fontWeight: 500, fontSize: 14,
+                        }}>
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+
+          {[
+            { key: 'inventory', label: 'Inventory' },
+            { key: 'journal', label: 'Journal' },
+          ].map((t) => (
+            <button key={t.key} onClick={() => { setTab(t.key); setNavMenuOpen(null); }} style={{
+              padding: '9px 16px', border: 'none', cursor: 'pointer',
+              background: tab === t.key ? 'var(--ink)' : 'transparent',
+              color: tab === t.key ? 'var(--paper)' : 'var(--slate)',
+              fontWeight: 500, borderRadius: '3px 3px 0 0',
+            }}>
+              {t.label}
+            </button>
+          ))}
+
           <button onClick={exportCSV} disabled={entries.length === 0} style={{
             padding: '9px 16px', border: 'none', background: 'transparent',
             color: entries.length === 0 ? 'var(--paper-line)' : 'var(--gold)',
@@ -2662,6 +2725,12 @@ export default function Dashboard() {
         )}
 
       </main>
+
+      <footer style={{ maxWidth: 1080, margin: '0 auto', padding: '0 24px 40px', display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12, color: 'var(--slate)' }}>
+        <Link href="/privacy" style={{ color: 'var(--slate)' }}>Privacy Policy</Link>
+        <Link href="/terms" style={{ color: 'var(--slate)' }}>Terms &amp; Conditions</Link>
+        <Link href="/cookies" style={{ color: 'var(--slate)' }}>Cookie Policy</Link>
+      </footer>
 
       {sellingEntry && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,43,57,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 50 }}>
