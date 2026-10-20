@@ -233,6 +233,12 @@ export default function AdminPage() {
         </div>
       </main>
 
+      <footer style={{ maxWidth: 1080, margin: '0 auto', padding: '0 24px 40px', display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12, color: 'var(--slate)' }}>
+        <Link href="/privacy" style={{ color: 'var(--slate)' }}>Privacy Policy</Link>
+        <Link href="/terms" style={{ color: 'var(--slate)' }}>Terms &amp; Conditions</Link>
+        <Link href="/cookies" style={{ color: 'var(--slate)' }}>Cookie Policy</Link>
+      </footer>
+
       {editingEmail && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,43,57,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 50 }}>
           <div style={{ background: 'var(--card)', width: '100%', maxWidth: 480, maxHeight: '85vh', overflowY: 'auto', borderRadius: '8px 8px 0 0', padding: '22px 22px 28px', boxShadow: '0 -8px 30px rgba(0,0,0,0.2)' }}>
