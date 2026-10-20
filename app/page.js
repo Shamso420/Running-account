@@ -379,6 +379,11 @@ export default function Home() {
 
         <footer>
           <span>The Running Account</span>
+          <span style={{ display: 'flex', gap: 16 }}>
+            <Link href="/privacy" style={{ color: 'var(--slate)' }}>Privacy</Link>
+            <Link href="/terms" style={{ color: 'var(--slate)' }}>Terms</Link>
+            <Link href="/cookies" style={{ color: 'var(--slate)' }}>Cookies</Link>
+          </span>
           <span>Rate held at 89,000 LBP / USD</span>
         </footer>
       </div>

@@ -1703,7 +1703,7 @@ export default function Dashboard() {
                       Select customer
                     </button>
                     {form.where && (
-                      <button type="button" onClick={() => clearCustomer('main')} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 18, padding: '0 4px' }}>
+                      <button type="button" onClick={() => clearCustomer('main')} aria-label="Clear customer" style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 18, padding: '0 4px' }}>
                         ×
                       </button>
                     )}
@@ -1753,7 +1753,7 @@ export default function Dashboard() {
                       Select customer
                     </button>
                     {form.customerId && (
-                      <button type="button" onClick={() => clearCustomer('main')} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 18, padding: '0 4px' }}>
+                      <button type="button" onClick={() => clearCustomer('main')} aria-label="Clear customer" style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 18, padding: '0 4px' }}>
                         ×
                       </button>
                     )}
@@ -1840,7 +1840,7 @@ export default function Dashboard() {
                             Price
                             <input type="number" step="any" min="0" placeholder="0" value={item.price} onChange={(e) => updateExtraSaleItem(i, 'price', e.target.value)} style={{ marginTop: 6 }} />
                           </label>
-                          <button type="button" onClick={() => removeExtraSaleItem(i)} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 18, padding: '8px 4px', cursor: 'pointer' }}>
+                          <button type="button" onClick={() => removeExtraSaleItem(i)} aria-label="Remove item" style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 18, padding: '8px 4px', cursor: 'pointer' }}>
                             ×
                           </button>
                         </div>
@@ -2057,7 +2057,7 @@ export default function Dashboard() {
                                           {canDeleteEntry && (confirmDeleteId === e.id ? (
                                             <span style={{ display: 'flex', gap: 6 }}>
                                               <button onClick={() => deleteEntry(e.id)} style={{ background: 'var(--coral)', color: '#fff', border: 'none', borderRadius: 3, padding: '3px 8px', fontSize: 11 }}>Delete</button>
-                                              <button onClick={() => setConfirmDeleteId(null)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
+                                              <button onClick={() => setConfirmDeleteId(null)} aria-label="Cancel delete" style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
                                             </span>
                                           ) : (
                                             <button onClick={() => setConfirmDeleteId(e.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>Delete</button>
@@ -2397,7 +2397,7 @@ export default function Dashboard() {
                                   {canDeleteEntry && (confirmDeleteInvId === i.id ? (
                                     <span style={{ display: 'flex', gap: 6 }}>
                                       <button onClick={() => deleteInventoryItem(i.id)} style={{ background: 'var(--coral)', color: '#fff', border: 'none', borderRadius: 3, padding: '3px 8px', fontSize: 11 }}>Delete</button>
-                                      <button onClick={() => setConfirmDeleteInvId(null)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
+                                      <button onClick={() => setConfirmDeleteInvId(null)} aria-label="Cancel delete" style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
                                     </span>
                                   ) : (
                                     <button onClick={() => setConfirmDeleteInvId(i.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>Delete</button>
@@ -2704,7 +2704,7 @@ export default function Dashboard() {
                   Select customer
                 </button>
                 {sellForm.soldTo && (
-                  <button type="button" onClick={() => clearCustomer('sell')} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 18, padding: '0 4px' }}>
+                  <button type="button" onClick={() => clearCustomer('sell')} aria-label="Clear customer" style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 18, padding: '0 4px' }}>
                     ×
                   </button>
                 )}
@@ -2986,7 +2986,7 @@ export default function Dashboard() {
                             <td style={{ padding: '10px 0', fontSize: 13, color: '#12202b', textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtUSD(invoiceAmountUsd(e))}</td>
                             {invoiceEntries.length > 1 && (
                               <td className="no-print" style={{ padding: '10px 0 10px 10px', textAlign: 'right' }}>
-                                <button onClick={() => removeInvoiceItem(e.id)} style={{ background: 'none', border: 'none', color: '#5B6B7A', fontSize: 16, lineHeight: 1, padding: 4, cursor: 'pointer' }}>×</button>
+                                <button onClick={() => removeInvoiceItem(e.id)} aria-label="Remove item" style={{ background: 'none', border: 'none', color: '#5B6B7A', fontSize: 16, lineHeight: 1, padding: 4, cursor: 'pointer' }}>×</button>
                               </td>
                             )}
                           </tr>
@@ -3505,7 +3505,7 @@ function DebtsSection({
                   Select customer
                 </button>
                 {form.customerId && (
-                  <button type="button" onClick={onClearCustomer} style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 18, padding: '0 4px' }}>
+                  <button type="button" onClick={onClearCustomer} aria-label="Clear customer" style={{ background: 'none', border: 'none', color: 'var(--slate)', fontSize: 18, padding: '0 4px' }}>
                     ×
                   </button>
                 )}
@@ -3623,7 +3623,7 @@ function DebtsSection({
                         {canDeleteEntry && (confirmDeleteId === e.id ? (
                           <span style={{ display: 'flex', gap: 6 }}>
                             <button onClick={() => onDelete(e.id)} style={{ background: 'var(--coral)', color: '#fff', border: 'none', borderRadius: 3, padding: '3px 8px', fontSize: 11 }}>Delete</button>
-                            <button onClick={() => setConfirmDeleteId(null)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
+                            <button onClick={() => setConfirmDeleteId(null)} aria-label="Cancel delete" style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
                           </span>
                         ) : (
                           <button onClick={() => setConfirmDeleteId(e.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>Delete</button>
@@ -3658,7 +3658,7 @@ function DebtsSection({
                       {canDeleteEntry && (confirmDeleteId === e.id ? (
                         <span style={{ display: 'flex', gap: 6 }}>
                           <button onClick={() => onDelete(e.id)} style={{ background: 'var(--coral)', color: '#fff', border: 'none', borderRadius: 3, padding: '3px 8px', fontSize: 11 }}>Delete</button>
-                          <button onClick={() => setConfirmDeleteId(null)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
+                          <button onClick={() => setConfirmDeleteId(null)} aria-label="Cancel delete" style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
                         </span>
                       ) : (
                         <button onClick={() => setConfirmDeleteId(e.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>Delete</button>
@@ -3854,7 +3854,7 @@ function RecurringCostSection({
                           {canDelete && (confirmDeleteId === e.id ? (
                             <span style={{ display: 'flex', gap: 6 }}>
                               <button onClick={() => onDelete(e.id)} style={{ background: 'var(--coral)', color: '#fff', border: 'none', borderRadius: 3, padding: '3px 8px', fontSize: 11 }}>Delete</button>
-                              <button onClick={() => setConfirmDeleteId(null)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
+                              <button onClick={() => setConfirmDeleteId(null)} aria-label="Cancel delete" style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>×</button>
                             </span>
                           ) : (
                             <button onClick={() => setConfirmDeleteId(e.id)} style={{ background: 'none', border: 'none', color: 'var(--slate)' }}>Delete</button>
