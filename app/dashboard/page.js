@@ -309,6 +309,7 @@ export default function Dashboard() {
   );
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('add');
+  const [mobileNavMenuOpen, setMobileNavMenuOpen] = useState(null);
   const [form, setForm] = useState(emptyForm());
   const [extraSaleItems, setExtraSaleItems] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -1516,7 +1517,6 @@ export default function Dashboard() {
     { key: 'inventory', label: 'Inventory' },
     { key: 'journal', label: 'Journal' },
   ];
-  const allMobileTabs = [...addLedgerTabs, ...reportsTabs, ...moneyTabs, ...otherTabs];
 
   return (
     <div style={{ minHeight: '100vh' }}>
@@ -1547,9 +1547,9 @@ export default function Dashboard() {
             </button>
           </div>
         </div>
-        <nav style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-          {allMobileTabs.map((t) => (
-            <button key={t.key} onClick={() => { if (t.key === 'add') cancelEditEntry(); setTab(t.key); }} style={{
+        <nav style={{ display: 'flex', flexWrap: 'wrap', gap: 4, position: 'relative' }}>
+          {addLedgerTabs.map((t) => (
+            <button key={t.key} onClick={() => { if (t.key === 'add') cancelEditEntry(); setTab(t.key); setMobileNavMenuOpen(null); }} style={{
               padding: '8px 12px', border: 'none', cursor: 'pointer', borderRadius: 4,
               background: tab === t.key ? 'var(--ink)' : 'transparent',
               color: tab === t.key ? 'var(--paper)' : 'var(--slate)',
@@ -1558,6 +1558,65 @@ export default function Dashboard() {
               {t.label}
             </button>
           ))}
+
+          {[
+            { group: 'reports', label: 'Reports', items: reportsTabs },
+            { group: 'money', label: 'Money', items: moneyTabs },
+          ].map((g) => {
+            const active = g.items.some((i) => i.key === tab);
+            const open = mobileNavMenuOpen === g.group;
+            return (
+              <div key={g.group} style={{ position: 'relative' }}>
+                <button
+                  onClick={() => setMobileNavMenuOpen(open ? null : g.group)}
+                  style={{
+                    padding: '8px 12px', border: 'none', cursor: 'pointer', borderRadius: 4,
+                    background: active || open ? 'var(--ink)' : 'transparent',
+                    color: active || open ? 'var(--paper)' : 'var(--slate)',
+                    fontWeight: 500, fontSize: 13,
+                    display: 'flex', alignItems: 'center', gap: 5,
+                  }}
+                >
+                  {g.label}
+                  <span style={{ fontSize: 9, transform: open ? 'rotate(180deg)' : 'none' }}>▾</span>
+                </button>
+                {open && (
+                  <>
+                    <div onClick={() => setMobileNavMenuOpen(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                    <div style={{
+                      position: 'absolute', top: '100%', left: 0, marginTop: 4, minWidth: 170, zIndex: 41,
+                      background: 'var(--card)', border: '1px solid var(--paper-line)', borderRadius: 4,
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.3)', overflow: 'hidden',
+                    }}>
+                      {g.items.map((t) => (
+                        <button key={t.key} onClick={() => { setTab(t.key); setMobileNavMenuOpen(null); }} style={{
+                          display: 'block', width: '100%', textAlign: 'left',
+                          padding: '10px 14px', border: 'none', cursor: 'pointer',
+                          background: tab === t.key ? 'var(--paper)' : 'transparent',
+                          color: tab === t.key ? 'var(--ink)' : 'var(--slate)',
+                          fontWeight: 500, fontSize: 14,
+                        }}>
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+
+          {otherTabs.map((t) => (
+            <button key={t.key} onClick={() => { setTab(t.key); setMobileNavMenuOpen(null); }} style={{
+              padding: '8px 12px', border: 'none', cursor: 'pointer', borderRadius: 4,
+              background: tab === t.key ? 'var(--ink)' : 'transparent',
+              color: tab === t.key ? 'var(--paper)' : 'var(--slate)',
+              fontWeight: 500, fontSize: 13,
+            }}>
+              {t.label}
+            </button>
+          ))}
+
           <button onClick={exportCSV} disabled={entries.length === 0} style={{
             padding: '8px 12px', border: 'none', background: 'transparent', borderRadius: 4,
             color: entries.length === 0 ? 'var(--paper-line)' : 'var(--gold)',
