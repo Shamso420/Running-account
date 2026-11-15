@@ -309,7 +309,6 @@ export default function Dashboard() {
   );
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('add');
-  const [navMenuOpen, setNavMenuOpen] = useState(null);
   const [form, setForm] = useState(emptyForm());
   const [extraSaleItems, setExtraSaleItems] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -1502,131 +1501,128 @@ export default function Dashboard() {
     {invoiceEntries.length === 0 && !printingInvItem && (
     <>
       <div style={{ height: 4, background: 'linear-gradient(90deg, var(--green), var(--gold), var(--coral), var(--blue))' }} />
-      <header style={{ borderBottom: '1px solid var(--paper-line)', padding: '26px 24px 18px' }}>
-        <div style={{ maxWidth: 1080, margin: '0 auto', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <img src="/logo.png" alt="Running Account" style={{ height: 44, width: 44, borderRadius: 8 }} />
-            <div>
-              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: '0.14em', color: 'var(--gold)', textTransform: 'uppercase', marginBottom: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+        <aside style={{
+          width: 240, flexShrink: 0, position: 'sticky', top: 0, height: '100vh', overflowY: 'auto',
+          borderRight: '1px solid var(--paper-line)', padding: '24px 16px', display: 'flex', flexDirection: 'column',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 8px', marginBottom: 24 }}>
+            <img src="/logo.png" alt="Running Account" style={{ height: 32, width: 32, borderRadius: 7, flexShrink: 0 }} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 9.5, letterSpacing: '0.12em', color: 'var(--gold)', textTransform: 'uppercase' }}>
                 Ledger No. 02
               </div>
-              <h1 style={{ fontSize: 30 }}>The Running Account</h1>
+              <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 15, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                Running Account
+              </div>
             </div>
           </div>
-          <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: 'var(--slate)', textAlign: 'right' }}>
-            {session.user.email}<br />
-            {useRoles && role && <span style={{ color: '#B48CFF', textTransform: 'capitalize' }}>{role} · </span>}
-            {isAdmin && <Link href="/admin" style={{ color: 'var(--gold)' }}>Admin view</Link>}
-            {isAdmin && ' · '}
-            {useRoles && (
-              <>
-                <button onClick={switchRole} style={{ background: 'none', border: 'none', color: 'var(--slate)', textDecoration: 'underline', cursor: 'pointer', fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, padding: 0 }}>
+
+          <nav style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
+            {[
+              ...(canAdd ? [{ key: 'add', label: 'Add entry' }] : []),
+              { key: 'ledger', label: 'Ledger' },
+            ].map((t) => (
+              <button key={t.key} onClick={() => { if (t.key === 'add') cancelEditEntry(); setTab(t.key); }} style={{
+                padding: '9px 10px', border: 'none', cursor: 'pointer', textAlign: 'left', borderRadius: 4,
+                background: tab === t.key ? 'var(--ink)' : 'transparent',
+                color: tab === t.key ? 'var(--paper)' : 'var(--slate)',
+                fontWeight: 500, fontSize: 14,
+              }}>
+                {t.label}
+              </button>
+            ))}
+
+            {[
+              { group: 'reports', label: 'Reports', items: [
+                { key: 'dashboard', label: 'Dashboard' },
+                { key: 'daily', label: 'Report' },
+                { key: 'monthly', label: 'Monthly' },
+                ...(plan === 'business' ? [{ key: 'goals', label: 'Goals' }] : []),
+              ] },
+              { group: 'money', label: 'Money', items: [
+                { key: 'costs', label: 'Costs' },
+                { key: 'wages', label: 'Wages' },
+                { key: 'debts', label: 'Debts' },
+                { key: 'partnerDebts', label: 'Partner Debts' },
+              ] },
+            ].map((g) => (
+              <div key={g.group} style={{ marginTop: 14 }}>
+                <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, letterSpacing: '0.1em', color: 'var(--slate)', textTransform: 'uppercase', padding: '0 10px', marginBottom: 4 }}>
+                  {g.label}
+                </div>
+                {g.items.map((t) => (
+                  <button key={t.key} onClick={() => setTab(t.key)} style={{
+                    display: 'block', width: '100%', padding: '9px 10px', border: 'none', cursor: 'pointer', textAlign: 'left', borderRadius: 4,
+                    background: tab === t.key ? 'var(--ink)' : 'transparent',
+                    color: tab === t.key ? 'var(--paper)' : 'var(--slate)',
+                    fontWeight: 500, fontSize: 14,
+                  }}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            ))}
+
+            <div style={{ marginTop: 14 }}>
+              {[
+                { key: 'inventory', label: 'Inventory' },
+                { key: 'journal', label: 'Journal' },
+              ].map((t) => (
+                <button key={t.key} onClick={() => setTab(t.key)} style={{
+                  display: 'block', width: '100%', padding: '9px 10px', border: 'none', cursor: 'pointer', textAlign: 'left', borderRadius: 4,
+                  background: tab === t.key ? 'var(--ink)' : 'transparent',
+                  color: tab === t.key ? 'var(--paper)' : 'var(--slate)',
+                  fontWeight: 500, fontSize: 14,
+                }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            <button onClick={exportCSV} disabled={entries.length === 0} style={{
+              display: 'block', width: '100%', textAlign: 'left', marginTop: 14,
+              padding: '9px 10px', border: 'none', background: 'transparent', borderRadius: 4,
+              color: entries.length === 0 ? 'var(--paper-line)' : 'var(--gold)',
+              fontWeight: 500, fontSize: 14, cursor: entries.length === 0 ? 'default' : 'pointer',
+            }}>
+              Export CSV
+            </button>
+          </nav>
+
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--paper-line)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 4px', marginBottom: 10 }}>
+              <div style={{
+                width: 30, height: 30, borderRadius: '50%', background: 'var(--card)', border: '1px solid var(--paper-line)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 13, color: 'var(--gold)',
+              }}>
+                {session.user.email[0].toUpperCase()}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {session.user.email}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--slate)', textTransform: 'capitalize' }}>
+                  {plan} plan{useRoles && role && ` · ${role}`}
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 10px', padding: '0 4px', fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5 }}>
+              {isAdmin && <Link href="/admin" style={{ color: 'var(--gold)' }}>Admin view</Link>}
+              {useRoles && (
+                <button onClick={switchRole} style={{ background: 'none', border: 'none', color: 'var(--slate)', textDecoration: 'underline', cursor: 'pointer', fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, padding: 0 }}>
                   Switch role
                 </button>
-                {' · '}
-              </>
-            )}
-            <button onClick={signOut} style={{ background: 'none', border: 'none', color: 'var(--slate)', textDecoration: 'underline', cursor: 'pointer', fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, padding: 0 }}>
-              Sign out
-            </button>
+              )}
+              <button onClick={signOut} style={{ background: 'none', border: 'none', color: 'var(--slate)', textDecoration: 'underline', cursor: 'pointer', fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, padding: 0 }}>
+                Sign out
+              </button>
+            </div>
           </div>
-        </div>
+        </aside>
 
-        <nav style={{ maxWidth: 1080, margin: '20px auto 0', display: 'flex', flexWrap: 'wrap', gap: 4, position: 'relative' }}>
-          {[
-            ...(canAdd ? [{ key: 'add', label: 'Add entry' }] : []),
-            { key: 'ledger', label: 'Ledger' },
-          ].map((t) => (
-            <button key={t.key} onClick={() => { if (t.key === 'add') cancelEditEntry(); setTab(t.key); setNavMenuOpen(null); }} style={{
-              padding: '9px 16px', border: 'none', cursor: 'pointer',
-              background: tab === t.key ? 'var(--ink)' : 'transparent',
-              color: tab === t.key ? 'var(--paper)' : 'var(--slate)',
-              fontWeight: 500, borderRadius: '3px 3px 0 0',
-            }}>
-              {t.label}
-            </button>
-          ))}
-
-          {[
-            { group: 'reports', label: 'Reports', items: [
-              { key: 'dashboard', label: 'Dashboard' },
-              { key: 'daily', label: 'Report' },
-              { key: 'monthly', label: 'Monthly' },
-              ...(plan === 'business' ? [{ key: 'goals', label: 'Goals' }] : []),
-            ] },
-            { group: 'money', label: 'Money', items: [
-              { key: 'costs', label: 'Costs' },
-              { key: 'wages', label: 'Wages' },
-              { key: 'debts', label: 'Debts' },
-              { key: 'partnerDebts', label: 'Partner Debts' },
-            ] },
-          ].map((g) => {
-            const active = g.items.some((i) => i.key === tab);
-            const open = navMenuOpen === g.group;
-            return (
-              <div key={g.group} style={{ position: 'relative' }}>
-                <button
-                  onClick={() => setNavMenuOpen(open ? null : g.group)}
-                  style={{
-                    padding: '9px 16px', border: 'none', cursor: 'pointer',
-                    background: active || open ? 'var(--ink)' : 'transparent',
-                    color: active || open ? 'var(--paper)' : 'var(--slate)',
-                    fontWeight: 500, borderRadius: '3px 3px 0 0',
-                    display: 'flex', alignItems: 'center', gap: 5,
-                  }}
-                >
-                  {g.label}
-                  <span style={{ fontSize: 10, transform: open ? 'rotate(180deg)' : 'none' }}>▾</span>
-                </button>
-                {open && (
-                  <>
-                    <div onClick={() => setNavMenuOpen(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-                    <div style={{
-                      position: 'absolute', top: '100%', left: 0, marginTop: 4, minWidth: 170, zIndex: 41,
-                      background: 'var(--card)', border: '1px solid var(--paper-line)', borderRadius: 4,
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.3)', overflow: 'hidden',
-                    }}>
-                      {g.items.map((t) => (
-                        <button key={t.key} onClick={() => { setTab(t.key); setNavMenuOpen(null); }} style={{
-                          display: 'block', width: '100%', textAlign: 'left',
-                          padding: '10px 14px', border: 'none', cursor: 'pointer',
-                          background: tab === t.key ? 'var(--paper)' : 'transparent',
-                          color: tab === t.key ? 'var(--ink)' : 'var(--slate)',
-                          fontWeight: 500, fontSize: 14,
-                        }}>
-                          {t.label}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })}
-
-          {[
-            { key: 'inventory', label: 'Inventory' },
-            { key: 'journal', label: 'Journal' },
-          ].map((t) => (
-            <button key={t.key} onClick={() => { setTab(t.key); setNavMenuOpen(null); }} style={{
-              padding: '9px 16px', border: 'none', cursor: 'pointer',
-              background: tab === t.key ? 'var(--ink)' : 'transparent',
-              color: tab === t.key ? 'var(--paper)' : 'var(--slate)',
-              fontWeight: 500, borderRadius: '3px 3px 0 0',
-            }}>
-              {t.label}
-            </button>
-          ))}
-
-          <button onClick={exportCSV} disabled={entries.length === 0} style={{
-            padding: '9px 16px', border: 'none', background: 'transparent',
-            color: entries.length === 0 ? 'var(--paper-line)' : 'var(--gold)',
-            fontWeight: 500, marginLeft: 'auto', cursor: entries.length === 0 ? 'default' : 'pointer',
-          }}>
-            Export CSV
-          </button>
-        </nav>
-      </header>
+        <div style={{ flex: 1, minWidth: 0 }}>
 
       <main style={{ maxWidth: 1080, margin: '0 auto', padding: '28px 24px 80px' }}>
         {loadError && (
@@ -2731,6 +2727,9 @@ export default function Dashboard() {
         <Link href="/terms" style={{ color: 'var(--slate)' }}>Terms &amp; Conditions</Link>
         <Link href="/cookies" style={{ color: 'var(--slate)' }}>Cookie Policy</Link>
       </footer>
+
+        </div>
+      </div>
 
       {sellingEntry && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,43,57,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 50 }}>
