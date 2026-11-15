@@ -1496,13 +1496,80 @@ export default function Dashboard() {
     );
   }
 
+  const addLedgerTabs = [
+    ...(canAdd ? [{ key: 'add', label: 'Add entry' }] : []),
+    { key: 'ledger', label: 'Ledger' },
+  ];
+  const reportsTabs = [
+    { key: 'dashboard', label: 'Dashboard' },
+    { key: 'daily', label: 'Report' },
+    { key: 'monthly', label: 'Monthly' },
+    ...(plan === 'business' ? [{ key: 'goals', label: 'Goals' }] : []),
+  ];
+  const moneyTabs = [
+    { key: 'costs', label: 'Costs' },
+    { key: 'wages', label: 'Wages' },
+    { key: 'debts', label: 'Debts' },
+    { key: 'partnerDebts', label: 'Partner Debts' },
+  ];
+  const otherTabs = [
+    { key: 'inventory', label: 'Inventory' },
+    { key: 'journal', label: 'Journal' },
+  ];
+  const allMobileTabs = [...addLedgerTabs, ...reportsTabs, ...moneyTabs, ...otherTabs];
+
   return (
     <div style={{ minHeight: '100vh' }}>
     {invoiceEntries.length === 0 && !printingInvItem && (
     <>
       <div style={{ height: 4, background: 'linear-gradient(90deg, var(--green), var(--gold), var(--coral), var(--blue))' }} />
+
+      <div className="dash-mobile-topbar" style={{ borderBottom: '1px solid var(--paper-line)', padding: '18px 20px 14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <img src="/logo.png" alt="Running Account" style={{ height: 32, width: 32, borderRadius: 7 }} />
+            <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 16, fontWeight: 600, color: 'var(--ink)' }}>Running Account</span>
+          </div>
+          <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: 'var(--slate)', textAlign: 'right' }}>
+            {session.user.email}<br />
+            {isAdmin && <Link href="/admin" style={{ color: 'var(--gold)' }}>Admin view</Link>}
+            {isAdmin && ' · '}
+            {useRoles && (
+              <>
+                <button onClick={switchRole} style={{ background: 'none', border: 'none', color: 'var(--slate)', textDecoration: 'underline', cursor: 'pointer', fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, padding: 0 }}>
+                  Switch role
+                </button>
+                {' · '}
+              </>
+            )}
+            <button onClick={signOut} style={{ background: 'none', border: 'none', color: 'var(--slate)', textDecoration: 'underline', cursor: 'pointer', fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, padding: 0 }}>
+              Sign out
+            </button>
+          </div>
+        </div>
+        <nav style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {allMobileTabs.map((t) => (
+            <button key={t.key} onClick={() => { if (t.key === 'add') cancelEditEntry(); setTab(t.key); }} style={{
+              padding: '8px 12px', border: 'none', cursor: 'pointer', borderRadius: 4,
+              background: tab === t.key ? 'var(--ink)' : 'transparent',
+              color: tab === t.key ? 'var(--paper)' : 'var(--slate)',
+              fontWeight: 500, fontSize: 13,
+            }}>
+              {t.label}
+            </button>
+          ))}
+          <button onClick={exportCSV} disabled={entries.length === 0} style={{
+            padding: '8px 12px', border: 'none', background: 'transparent', borderRadius: 4,
+            color: entries.length === 0 ? 'var(--paper-line)' : 'var(--gold)',
+            fontWeight: 500, fontSize: 13, cursor: entries.length === 0 ? 'default' : 'pointer',
+          }}>
+            Export CSV
+          </button>
+        </nav>
+      </div>
+
       <div style={{ display: 'flex', alignItems: 'flex-start' }}>
-        <aside style={{
+        <aside className="dash-sidebar" style={{
           width: 240, flexShrink: 0, position: 'sticky', top: 0, height: '100vh', overflowY: 'auto',
           borderRight: '1px solid var(--paper-line)', padding: '24px 16px', display: 'flex', flexDirection: 'column',
         }}>
@@ -1519,10 +1586,7 @@ export default function Dashboard() {
           </div>
 
           <nav style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
-            {[
-              ...(canAdd ? [{ key: 'add', label: 'Add entry' }] : []),
-              { key: 'ledger', label: 'Ledger' },
-            ].map((t) => (
+            {addLedgerTabs.map((t) => (
               <button key={t.key} onClick={() => { if (t.key === 'add') cancelEditEntry(); setTab(t.key); }} style={{
                 padding: '9px 10px', border: 'none', cursor: 'pointer', textAlign: 'left', borderRadius: 4,
                 background: tab === t.key ? 'var(--ink)' : 'transparent',
@@ -1534,18 +1598,8 @@ export default function Dashboard() {
             ))}
 
             {[
-              { group: 'reports', label: 'Reports', items: [
-                { key: 'dashboard', label: 'Dashboard' },
-                { key: 'daily', label: 'Report' },
-                { key: 'monthly', label: 'Monthly' },
-                ...(plan === 'business' ? [{ key: 'goals', label: 'Goals' }] : []),
-              ] },
-              { group: 'money', label: 'Money', items: [
-                { key: 'costs', label: 'Costs' },
-                { key: 'wages', label: 'Wages' },
-                { key: 'debts', label: 'Debts' },
-                { key: 'partnerDebts', label: 'Partner Debts' },
-              ] },
+              { group: 'reports', label: 'Reports', items: reportsTabs },
+              { group: 'money', label: 'Money', items: moneyTabs },
             ].map((g) => (
               <div key={g.group} style={{ marginTop: 14 }}>
                 <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, letterSpacing: '0.1em', color: 'var(--slate)', textTransform: 'uppercase', padding: '0 10px', marginBottom: 4 }}>
@@ -1565,10 +1619,7 @@ export default function Dashboard() {
             ))}
 
             <div style={{ marginTop: 14 }}>
-              {[
-                { key: 'inventory', label: 'Inventory' },
-                { key: 'journal', label: 'Journal' },
-              ].map((t) => (
+              {otherTabs.map((t) => (
                 <button key={t.key} onClick={() => setTab(t.key)} style={{
                   display: 'block', width: '100%', padding: '9px 10px', border: 'none', cursor: 'pointer', textAlign: 'left', borderRadius: 4,
                   background: tab === t.key ? 'var(--ink)' : 'transparent',
