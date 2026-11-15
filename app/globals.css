@@ -93,6 +93,14 @@ tbody tr:nth-child(odd) {
   body::before { display: none; }
 }
 
+/* Dashboard shell: sidebar nav on desktop, a horizontal top bar on
+   narrow screens — a fixed-width sidebar doesn't fit on a phone. */
+.dash-mobile-topbar { display: none; }
+@media (max-width: 820px) {
+  .dash-sidebar { display: none !important; }
+  .dash-mobile-topbar { display: block; }
+}
+
 /* Printed documents (sale invoices, inventory cost records) always render as a
    plain light page, regardless of the app's on-screen theme — every color in
    them is a literal value, but the *table* rules above are element-based and
