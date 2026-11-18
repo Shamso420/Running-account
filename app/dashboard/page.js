@@ -3,11 +3,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import {
-  PieChart, Pie, Cell, BarChart, Bar, LineChart, Line,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-} from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../../lib/supabaseClient';
+import SideRail from '../../components/SideRail';
+import DashboardHome from '../../components/DashboardHome';
+import { PIE_COLORS, CHART_TOOLTIP_PROPS } from '../../lib/chartStyle';
 import { RATE, TYPES, CATEGORY_SUGGESTIONS, CUSTOMER_TYPES, PAYMENT_METHODS, FREQUENCIES, saleCollectionStatus, debtCollectionStatus, fmtUSD, fmtLBP, toUsdLbp } from '../../lib/ledgerUtils';
 
 const emptyForm = () => ({
@@ -134,16 +134,6 @@ function computeSaleStats(rows) {
 
   return { transactions, revenue, cost, grossProfit, grossMargin, avgProfitPerSale, collected, openReceivables, collectionRate, categories, bestCategory, worstCategory, transactionRows };
 }
-
-const PIE_COLORS = ['#F0B429', '#FF5C7A', '#34D399', '#2DE2E6', '#B48CFF', '#FF9F6B', '#4ADE80', '#F472B6'];
-
-const CHART_TICK = { fontSize: 12, fill: '#7C8AA3' };
-const CHART_TOOLTIP_PROPS = {
-  contentStyle: { background: '#12151C', border: '1px solid #232A36', borderRadius: 4, color: '#E7ECF3', fontSize: 13 },
-  labelStyle: { color: '#E7ECF3' },
-  itemStyle: { color: '#E7ECF3' },
-};
-const CHART_LEGEND_STYLE = { fontSize: 12, color: '#7C8AA3' };
 
 const GOAL_PERIODS = [
   { key: 'daily', label: 'Daily' },
@@ -1628,109 +1618,13 @@ export default function Dashboard() {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'flex-start' }}>
-        <aside className="dash-sidebar" style={{
-          width: 240, flexShrink: 0, position: 'sticky', top: 0, height: '100vh', overflowY: 'auto',
-          borderRight: '1px solid var(--paper-line)', padding: '24px 16px', display: 'flex', flexDirection: 'column',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 8px', marginBottom: 24 }}>
-            <img src="/logo.png" alt="Running Account" style={{ height: 32, width: 32, borderRadius: 7, flexShrink: 0 }} />
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 9.5, letterSpacing: '0.12em', color: 'var(--gold)', textTransform: 'uppercase' }}>
-                Ledger No. 02
-              </div>
-              <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 15, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                Running Account
-              </div>
-            </div>
-          </div>
-
-          <nav style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
-            {addLedgerTabs.map((t) => (
-              <button key={t.key} onClick={() => { if (t.key === 'add') cancelEditEntry(); setTab(t.key); }} style={{
-                padding: '9px 10px', border: 'none', cursor: 'pointer', textAlign: 'left', borderRadius: 4,
-                background: tab === t.key ? 'var(--ink)' : 'transparent',
-                color: tab === t.key ? 'var(--paper)' : 'var(--slate)',
-                fontWeight: 500, fontSize: 14,
-              }}>
-                {t.label}
-              </button>
-            ))}
-
-            {[
-              { group: 'reports', label: 'Reports', items: reportsTabs },
-              { group: 'money', label: 'Money', items: moneyTabs },
-            ].map((g) => (
-              <div key={g.group} style={{ marginTop: 14 }}>
-                <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, letterSpacing: '0.1em', color: 'var(--slate)', textTransform: 'uppercase', padding: '0 10px', marginBottom: 4 }}>
-                  {g.label}
-                </div>
-                {g.items.map((t) => (
-                  <button key={t.key} onClick={() => setTab(t.key)} style={{
-                    display: 'block', width: '100%', padding: '9px 10px', border: 'none', cursor: 'pointer', textAlign: 'left', borderRadius: 4,
-                    background: tab === t.key ? 'var(--ink)' : 'transparent',
-                    color: tab === t.key ? 'var(--paper)' : 'var(--slate)',
-                    fontWeight: 500, fontSize: 14,
-                  }}>
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            ))}
-
-            <div style={{ marginTop: 14 }}>
-              {otherTabs.map((t) => (
-                <button key={t.key} onClick={() => setTab(t.key)} style={{
-                  display: 'block', width: '100%', padding: '9px 10px', border: 'none', cursor: 'pointer', textAlign: 'left', borderRadius: 4,
-                  background: tab === t.key ? 'var(--ink)' : 'transparent',
-                  color: tab === t.key ? 'var(--paper)' : 'var(--slate)',
-                  fontWeight: 500, fontSize: 14,
-                }}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
-
-            <button onClick={exportCSV} disabled={entries.length === 0} style={{
-              display: 'block', width: '100%', textAlign: 'left', marginTop: 14,
-              padding: '9px 10px', border: 'none', background: 'transparent', borderRadius: 4,
-              color: entries.length === 0 ? 'var(--paper-line)' : 'var(--gold)',
-              fontWeight: 500, fontSize: 14, cursor: entries.length === 0 ? 'default' : 'pointer',
-            }}>
-              Export CSV
-            </button>
-          </nav>
-
-          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--paper-line)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 4px', marginBottom: 10 }}>
-              <div style={{
-                width: 30, height: 30, borderRadius: '50%', background: 'var(--card)', border: '1px solid var(--paper-line)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 13, color: 'var(--gold)',
-              }}>
-                {session.user.email[0].toUpperCase()}
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {session.user.email}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--slate)', textTransform: 'capitalize' }}>
-                  {plan} plan{useRoles && role && ` · ${role}`}
-                </div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 10px', padding: '0 4px', fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5 }}>
-              {isAdmin && <Link href="/admin" style={{ color: 'var(--gold)' }}>Admin view</Link>}
-              {useRoles && (
-                <button onClick={switchRole} style={{ background: 'none', border: 'none', color: 'var(--slate)', textDecoration: 'underline', cursor: 'pointer', fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, padding: 0 }}>
-                  Switch role
-                </button>
-              )}
-              <button onClick={signOut} style={{ background: 'none', border: 'none', color: 'var(--slate)', textDecoration: 'underline', cursor: 'pointer', fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, padding: 0 }}>
-                Sign out
-              </button>
-            </div>
-          </div>
-        </aside>
+        <SideRail
+          tab={tab} setTab={setTab}
+          addLedgerTabs={addLedgerTabs} reportsTabs={reportsTabs} moneyTabs={moneyTabs} otherTabs={otherTabs}
+          email={session.user.email} plan={plan} useRoles={useRoles} role={role} isAdmin={isAdmin}
+          onSwitchRole={switchRole} onSignOut={signOut} onExport={exportCSV} exportDisabled={entries.length === 0}
+          onAdd={cancelEditEntry}
+        />
 
         <div style={{ flex: 1, minWidth: 0 }}>
 
@@ -2251,107 +2145,39 @@ export default function Dashboard() {
 
         {tab === 'dashboard' && (
           entries.length === 0 ? <EmptyState onAdd={() => setTab('add')} /> : (() => {
-            const kpiVals = [totals.income, totals.expense, totals.investment, totals.sale, totals.netDebt, totals.net].map((v) => Math.abs(Number(v)));
-            const maxAbs = Math.max(1, ...kpiVals);
-            const ringDeg = (v) => 30 + Math.min(1, Math.abs(Number(v)) / maxAbs) * 300;
+            const todayStr = new Date().toISOString().slice(0, 10);
+            const recent = [...entries]
+              .sort((a, b) => b.entry_date.localeCompare(a.entry_date))
+              .slice(0, 6)
+              .map((e) => {
+                const info = TYPES.find((t) => t.key === e.type);
+                const sign = e.type === 'income' || e.type === 'sale' ? 1 : e.type === 'debt' ? (e.debt_direction === 'i_owe' ? -1 : 1) : -1;
+                return {
+                  id: e.id,
+                  title: e.product || e.category || info?.label || e.type,
+                  sub: `${customerLabel(e) || info?.label || e.type} · ${e.entry_date}`,
+                  amount: Number(e.usd) || 0,
+                  sign,
+                  color: info?.color || 'var(--slate)',
+                };
+              });
+            const overdue = openDebts
+              .filter((e) => e.debt_direction !== 'i_owe' && daysBetween(todayStr, e.entry_date) > DEBT_OVERDUE_DAYS)
+              .map((e) => ({
+                id: e.id,
+                who: customerLabel(e) || e.category || 'Unnamed',
+                days: Math.floor(daysBetween(todayStr, e.entry_date)),
+                balance: Math.max(0, Number(e.usd) - Number(e.received_usd || 0)),
+              }))
+              .filter((a) => a.balance > 0.001)
+              .sort((a, b) => b.balance - a.balance);
             return (
-          <div>
-            <div className="hud-bar">
-              <div className="hud-left"><span className="hud-pulse" /> LEDGER-02 &middot; SYNCED</div>
-              <div className="hud-right">
-                <span>ACCOUNT <b>{session.user.email}</b></span>
-                <span>ENTRIES <b>{entries.length}</b></span>
-                <span>PERIOD <b>ALL TIME</b></span>
-              </div>
-            </div>
-
-            <div className="hud-frame" style={{ border: '1px solid var(--paper-line)', borderRadius: 4, background: 'var(--card)', padding: '20px 16px', marginBottom: 32 }}>
-              <span className="hud-c2" />
-              <div className="hud-sweep" />
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 12, position: 'relative', zIndex: 1 }}>
-                <HudRing label="Income" value={fmtUSD(totals.income)} color="var(--green)" deg={ringDeg(totals.income)} icon="USD" />
-                <HudRing label="Expenses" value={fmtUSD(totals.expense)} color="var(--coral)" deg={ringDeg(totals.expense)} icon="USD" />
-                <HudRing label="Invested" value={fmtUSD(totals.investment)} color="var(--gold)" deg={ringDeg(totals.investment)} icon="USD" />
-                <HudRing label="Sale profit" value={fmtUSD(totals.sale)} color="var(--blue)" deg={ringDeg(totals.sale)} icon="USD" />
-                <HudRing label="Debt (net)" value={fmtUSD(totals.netDebt)} color={totals.netDebt >= 0 ? 'var(--green)' : 'var(--coral)'} deg={ringDeg(totals.netDebt)} icon="NET" />
-                <HudRing label="Net position" value={fmtUSD(totals.net)} color={totals.net >= 0 ? 'var(--green)' : 'var(--coral)'} deg={ringDeg(totals.net)} icon="NET" />
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 32 }}>
-              <ChartCard title="Expenses by category" hud>
-                {expenseByCategory.length === 0 ? <NoData /> : (
-                  <ResponsiveContainer width="100%" height={240}>
-                    <PieChart>
-                      <Pie data={expenseByCategory} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={85} label={({ name }) => name}>
-                        {expenseByCategory.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                      </Pie>
-                      <Tooltip formatter={(v) => fmtUSD(v)} {...CHART_TOOLTIP_PROPS} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                )}
-              </ChartCard>
-              <ChartCard title="Investments by category" hud>
-                {investmentByCategory.length === 0 ? <NoData /> : (
-                  <ResponsiveContainer width="100%" height={240}>
-                    <PieChart>
-                      <Pie data={investmentByCategory} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={85} label={({ name }) => name}>
-                        {investmentByCategory.map((_, i) => <Cell key={i} fill={PIE_COLORS[(i + 3) % PIE_COLORS.length]} />)}
-                      </Pie>
-                      <Tooltip formatter={(v) => fmtUSD(v)} {...CHART_TOOLTIP_PROPS} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                )}
-              </ChartCard>
-            </div>
-
-            <ChartCard title="Monthly flow" hud>
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={monthly}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--paper-line)" />
-                  <XAxis dataKey="month" tick={CHART_TICK} />
-                  <YAxis tick={CHART_TICK} tickFormatter={(v) => `$${v}`} />
-                  <Tooltip formatter={(v) => fmtUSD(v)} {...CHART_TOOLTIP_PROPS} />
-                  <Legend wrapperStyle={CHART_LEGEND_STYLE} />
-                  <Bar dataKey="income" name="Income" fill="#34D399" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="expense" name="Expense" fill="#FF5C7A" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="investment" name="Investment" fill="#F0B429" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="sale" name="Sale profit" fill="#2DE2E6" radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartCard>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginTop: 24 }}>
-              <ChartCard title="Net position over time" hud>
-                {trend.length < 2 ? <NoData /> : (
-                  <ResponsiveContainer width="100%" height={240}>
-                    <LineChart data={trend}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--paper-line)" />
-                      <XAxis dataKey="month" tick={CHART_TICK} />
-                      <YAxis tick={CHART_TICK} tickFormatter={(v) => `$${v}`} />
-                      <Tooltip formatter={(v) => fmtUSD(v)} {...CHART_TOOLTIP_PROPS} />
-                      <Line type="monotone" dataKey="net" name="Net position" stroke="#F0B429" strokeWidth={2} dot={{ r: 3 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                )}
-              </ChartCard>
-              <ChartCard title="Income vs. expenses trend" hud>
-                {trend.length < 2 ? <NoData /> : (
-                  <ResponsiveContainer width="100%" height={240}>
-                    <LineChart data={trend}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--paper-line)" />
-                      <XAxis dataKey="month" tick={CHART_TICK} />
-                      <YAxis tick={CHART_TICK} tickFormatter={(v) => `$${v}`} />
-                      <Tooltip formatter={(v) => fmtUSD(v)} {...CHART_TOOLTIP_PROPS} />
-                      <Legend wrapperStyle={CHART_LEGEND_STYLE} />
-                      <Line type="monotone" dataKey="income" name="Income" stroke="#34D399" strokeWidth={2} dot={{ r: 3 }} />
-                      <Line type="monotone" dataKey="expense" name="Expense" stroke="#FF5C7A" strokeWidth={2} dot={{ r: 3 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                )}
-              </ChartCard>
-            </div>
-          </div>
+              <DashboardHome
+                totals={totals} monthly={monthly} trend={trend}
+                expenseByCategory={expenseByCategory} investmentByCategory={investmentByCategory}
+                recent={recent} actions={overdue.slice(0, 5)} actionTotal={overdue.length}
+                onNavigate={setTab} onExport={exportCSV}
+              />
             );
           })()
         )}
@@ -4072,19 +3898,6 @@ function ChartCard({ title, children, hud }) {
         {hud && <span style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, var(--paper-line), transparent)' }} />}
       </h3>
       <div style={hud ? { position: 'relative', zIndex: 1 } : undefined}>{children}</div>
-    </div>
-  );
-}
-
-function HudRing({ label, value, color, deg, icon }) {
-  return (
-    <div style={{ textAlign: 'center' }}>
-      <div className="hud-ring" style={{ '--ring-c': color, '--ring-deg': `${deg}deg` }}>
-        <span className="hud-ring-dot" style={{ background: color, boxShadow: `0 0 6px 1px ${color}` }} />
-        <span className="hud-ring-icon" style={{ color }}>{icon}</span>
-      </div>
-      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 9.5, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--slate)', marginBottom: 4 }}>{label}</div>
-      <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 14, color }}>{value}</div>
     </div>
   );
 }
