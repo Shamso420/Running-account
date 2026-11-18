@@ -26,7 +26,11 @@ export default function LoginPage() {
     setBusy(true);
     try {
       if (mode === 'signup') {
-        const { error: signUpError } = await supabase.auth.signUp({ email, password });
+        const { error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: window.location.origin },
+        });
         if (signUpError) throw signUpError;
         setInfo('Account created. Check your email to confirm it, then log in below.');
         setMode('login');
