@@ -101,6 +101,16 @@ tbody tr:nth-child(odd) {
   .dash-mobile-topbar { display: block; }
 }
 
+/* Dashboard card rows: stack as the available width shrinks. */
+.dash-row-wide { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 20px; margin-bottom: 20px; }
+.dash-row-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin-bottom: 20px; }
+.dash-row-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+@media (max-width: 1200px) { .dash-row-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 1000px) { .dash-row-wide { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 700px) {
+  .dash-row-3, .dash-row-2 { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* Printed documents (sale invoices, inventory cost records) always render as a
    plain light page, regardless of the app's on-screen theme — every color in
    them is a literal value, but the *table* rules above are element-based and
