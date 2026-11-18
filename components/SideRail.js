@@ -57,11 +57,12 @@ function RailItem({ icon, label, active, expanded, onClick, href, chevron, open,
     </>
   );
   const title = expanded ? undefined : label;
+  const className = `rail-item${active ? ' is-active' : ''}`;
   if (href) {
-    return <Link href={href} title={title} aria-label={label} style={style}>{inner}</Link>;
+    return <Link href={href} className={className} title={title} aria-label={label} style={style}>{inner}</Link>;
   }
   return (
-    <button type="button" onClick={onClick} disabled={disabled} title={title} aria-label={label}
+    <button type="button" className={className} onClick={onClick} disabled={disabled} title={title} aria-label={label}
       aria-expanded={chevron ? !!open : undefined} style={style}>
       {inner}
     </button>
@@ -88,6 +89,7 @@ export default function SideRail({
   return (
     <aside className="dash-sidebar" style={{ width: 88, flexShrink: 0, position: 'sticky', top: 0, height: '100vh', zIndex: 30 }}>
       <nav
+        className="rail-nav"
         aria-label="Main"
         onMouseEnter={expand}
         onMouseLeave={collapse}
@@ -129,7 +131,7 @@ export default function SideRail({
                 {open && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2, margin: '2px 0 6px' }}>
                     {g.items.map((t) => (
-                      <button key={t.key} type="button" onClick={() => go(t.key)} style={{
+                      <button key={t.key} type="button" className={`rail-sub${tab === t.key ? ' is-active' : ''}`} onClick={() => go(t.key)} style={{
                         height: 34, padding: '0 14px 0 44px', borderRadius: 17, textAlign: 'left', whiteSpace: 'nowrap',
                         cursor: 'pointer', fontWeight: 500, fontSize: 13.5,
                         border: `1px solid ${tab === t.key ? 'var(--paper-line)' : 'transparent'}`,
