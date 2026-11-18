@@ -36,8 +36,8 @@ export function NavIcon({ name, size = 20 }) {
 
 function RailItem({ icon, label, active, expanded, onClick, href, chevron, open, color, disabled }) {
   const style = {
-    display: 'flex', alignItems: 'center', gap: 12, width: '100%', height: 40, padding: '0 0 0 8px',
-    border: 'none', borderRadius: 20, textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', flexShrink: 0,
+    display: 'flex', alignItems: 'center', gap: 12, width: '100%', height: 42, padding: '0 0 0 8px',
+    border: 'none', borderRadius: 21, textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', flexShrink: 0,
     cursor: disabled ? 'default' : 'pointer', textDecoration: 'none',
     background: active ? 'var(--ink)' : 'transparent',
     color: active ? 'var(--paper)' : color || 'var(--slate)',
@@ -100,7 +100,7 @@ export default function SideRail({
           display: 'flex', flexDirection: 'column', padding: '12px 7px', overflow: 'hidden',
           background: 'var(--card)', border: '1px solid var(--paper-line)', borderRadius: 28,
           boxShadow: expanded ? '0 12px 40px rgba(0,0,0,0.45)' : 'none',
-          transition: 'width 0.18s ease, box-shadow 0.18s ease',
+          transition: 'width 0.12s ease',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, height: 40, paddingLeft: 3, flexShrink: 0 }}>
@@ -113,7 +113,7 @@ export default function SideRail({
           )}
         </div>
 
-        <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}>
+        <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 0, flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}>
           {addLedgerTabs.map((t) => (
             <RailItem key={t.key} icon={ICON_FOR[t.key]} label={t.label} active={tab === t.key} expanded={expanded} onClick={() => go(t.key)} />
           ))}
@@ -122,17 +122,17 @@ export default function SideRail({
             const hasActive = g.items.some((i) => i.key === tab);
             const open = expanded && group === g.key;
             return (
-              <div key={g.key} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <div key={g.key} style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                 <RailItem
                   icon={g.icon} label={g.label} chevron open={open} expanded={expanded}
                   active={hasActive && !open}
                   onClick={() => { if (!expanded) { setExpanded(true); setGroup(g.key); } else setGroup(open ? null : g.key); }}
                 />
                 {open && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, margin: '2px 0 6px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 0, margin: '0 0 6px' }}>
                     {g.items.map((t) => (
                       <button key={t.key} type="button" className={`rail-sub${tab === t.key ? ' is-active' : ''}`} onClick={() => go(t.key)} style={{
-                        height: 34, padding: '0 14px 0 44px', borderRadius: 17, textAlign: 'left', whiteSpace: 'nowrap',
+                        height: 36, padding: '0 14px 0 44px', borderRadius: 18, textAlign: 'left', whiteSpace: 'nowrap',
                         cursor: 'pointer', fontWeight: 500, fontSize: 13.5,
                         border: `1px solid ${tab === t.key ? 'var(--paper-line)' : 'transparent'}`,
                         background: tab === t.key ? 'var(--paper)' : 'transparent',

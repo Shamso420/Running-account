@@ -103,7 +103,6 @@ tbody tr:nth-child(odd) {
 
 /* Side rail: the highlight follows the mouse. The active item steps back to an
    outline while another item is hovered, so only one item looks selected. */
-.rail-item, .rail-sub { transition: background 0.12s ease, color 0.12s ease; }
 .rail-item:hover:not(:disabled), .rail-sub:hover {
   background: var(--ink) !important; color: var(--paper) !important; border-color: transparent !important;
 }
