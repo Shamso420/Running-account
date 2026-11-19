@@ -7,6 +7,11 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../../lib/supabaseClient';
 import SideRail from '../../components/SideRail';
 import DashboardHome from '../../components/DashboardHome';
+import MobileHome from '../../components/MobileHome';
+import MobileNav from '../../components/MobileNav';
+import UsernameDialog from '../../components/UsernameDialog';
+import { getUsername, displayName } from '../../lib/username';
+import { useMediaQuery, MOBILE_QUERY } from '../../lib/useMediaQuery';
 import { PIE_COLORS, CHART_TOOLTIP_PROPS } from '../../lib/chartStyle';
 import { RATE, TYPES, CATEGORY_SUGGESTIONS, CUSTOMER_TYPES, PAYMENT_METHODS, FREQUENCIES, saleCollectionStatus, debtCollectionStatus, fmtUSD, fmtLBP, toUsdLbp } from '../../lib/ledgerUtils';
 
@@ -298,8 +303,9 @@ export default function Dashboard() {
     [allEntries, useRoles, role]
   );
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState('add');
-  const [mobileNavMenuOpen, setMobileNavMenuOpen] = useState(null);
+  const [tab, setTab] = useState('dashboard');
+  const isMobile = useMediaQuery(MOBILE_QUERY);
+  const [usernameOpen, setUsernameOpen] = useState(false);
   const [form, setForm] = useState(emptyForm());
   const [extraSaleItems, setExtraSaleItems] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -1508,120 +1514,51 @@ export default function Dashboard() {
     { key: 'journal', label: 'Journal' },
   ];
 
+  // Save the display name into the user's profile data; returns an error message or ''.
+  const saveUsername = async (name) => {
+    const { data, error } = await supabase.auth.updateUser({ data: { username: name } });
+    if (error) return error.message || 'Could not save the username.';
+    if (data?.user) setSession((s) => (s ? { ...s, user: data.user } : s));
+    return '';
+  };
+
+  // Phone home screen's quick "Add expense / Add income": open the form on that type.
+  const startAdd = (type) => {
+    cancelEditEntry();
+    setForm((f) => ({ ...f, type, category: '', product: '', cost: '', receivedNow: '', supplier: '', paymentMethod: 'Cash', quantity: '1', imei: '', serialNumber: '' }));
+    setTab('add');
+  };
+
+  const mobileNavProps = {
+    tab, setTab, addLedgerTabs, reportsTabs, moneyTabs, otherTabs,
+    email: session.user.email, username: getUsername(session.user), onEditUsername: () => setUsernameOpen(true), isAdmin, useRoles,
+    onSwitchRole: switchRole, onSignOut: signOut, onExport: exportCSV,
+    exportDisabled: entries.length === 0, onAdd: cancelEditEntry,
+  };
+
   return (
     <div style={{ minHeight: '100vh' }}>
     {invoiceEntries.length === 0 && !printingInvItem && (
     <>
       <div style={{ height: 4, background: 'linear-gradient(90deg, var(--green), var(--gold), var(--coral), var(--blue))' }} />
 
-      <div className="dash-mobile-topbar" style={{ borderBottom: '1px solid var(--paper-line)', padding: '18px 20px 14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <img src="/logo.png" alt="Running Account" style={{ height: 32, width: 32, borderRadius: 7 }} />
-            <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 16, fontWeight: 600, color: 'var(--ink)' }}>Running Account</span>
-          </div>
-          <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: 'var(--slate)', textAlign: 'right' }}>
-            {session.user.email}<br />
-            {isAdmin && <Link href="/admin" style={{ color: 'var(--gold)' }}>Admin view</Link>}
-            {isAdmin && ' · '}
-            {useRoles && (
-              <>
-                <button onClick={switchRole} style={{ background: 'none', border: 'none', color: 'var(--slate)', textDecoration: 'underline', cursor: 'pointer', fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, padding: 0 }}>
-                  Switch role
-                </button>
-                {' · '}
-              </>
-            )}
-            <button onClick={signOut} style={{ background: 'none', border: 'none', color: 'var(--slate)', textDecoration: 'underline', cursor: 'pointer', fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, padding: 0 }}>
-              Sign out
-            </button>
-          </div>
-        </div>
-        <nav style={{ display: 'flex', flexWrap: 'wrap', gap: 4, position: 'relative' }}>
-          {addLedgerTabs.map((t) => (
-            <button key={t.key} onClick={() => { if (t.key === 'add') cancelEditEntry(); setTab(t.key); setMobileNavMenuOpen(null); }} style={{
-              padding: '8px 12px', border: 'none', cursor: 'pointer', borderRadius: 4,
-              background: tab === t.key ? 'var(--ink)' : 'transparent',
-              color: tab === t.key ? 'var(--paper)' : 'var(--slate)',
-              fontWeight: 500, fontSize: 13,
-            }}>
-              {t.label}
-            </button>
-          ))}
-
-          {[
-            { group: 'reports', label: 'Reports', items: reportsTabs },
-            { group: 'money', label: 'Money', items: moneyTabs },
-          ].map((g) => {
-            const active = g.items.some((i) => i.key === tab);
-            const open = mobileNavMenuOpen === g.group;
-            return (
-              <div key={g.group} style={{ position: 'relative' }}>
-                <button
-                  onClick={() => setMobileNavMenuOpen(open ? null : g.group)}
-                  style={{
-                    padding: '8px 12px', border: 'none', cursor: 'pointer', borderRadius: 4,
-                    background: active || open ? 'var(--ink)' : 'transparent',
-                    color: active || open ? 'var(--paper)' : 'var(--slate)',
-                    fontWeight: 500, fontSize: 13,
-                    display: 'flex', alignItems: 'center', gap: 5,
-                  }}
-                >
-                  {g.label}
-                  <span style={{ fontSize: 9, transform: open ? 'rotate(180deg)' : 'none' }}>▾</span>
-                </button>
-                {open && (
-                  <>
-                    <div onClick={() => setMobileNavMenuOpen(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-                    <div style={{
-                      position: 'absolute', top: '100%', left: 0, marginTop: 4, minWidth: 170, zIndex: 41,
-                      background: 'var(--card)', border: '1px solid var(--paper-line)', borderRadius: 4,
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.3)', overflow: 'hidden',
-                    }}>
-                      {g.items.map((t) => (
-                        <button key={t.key} onClick={() => { setTab(t.key); setMobileNavMenuOpen(null); }} style={{
-                          display: 'block', width: '100%', textAlign: 'left',
-                          padding: '10px 14px', border: 'none', cursor: 'pointer',
-                          background: tab === t.key ? 'var(--paper)' : 'transparent',
-                          color: tab === t.key ? 'var(--ink)' : 'var(--slate)',
-                          fontWeight: 500, fontSize: 14,
-                        }}>
-                          {t.label}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })}
-
-          {otherTabs.map((t) => (
-            <button key={t.key} onClick={() => { setTab(t.key); setMobileNavMenuOpen(null); }} style={{
-              padding: '8px 12px', border: 'none', cursor: 'pointer', borderRadius: 4,
-              background: tab === t.key ? 'var(--ink)' : 'transparent',
-              color: tab === t.key ? 'var(--paper)' : 'var(--slate)',
-              fontWeight: 500, fontSize: 13,
-            }}>
-              {t.label}
-            </button>
-          ))}
-
-          <button onClick={exportCSV} disabled={entries.length === 0} style={{
-            padding: '8px 12px', border: 'none', background: 'transparent', borderRadius: 4,
-            color: entries.length === 0 ? 'var(--paper-line)' : 'var(--gold)',
-            fontWeight: 500, fontSize: 13, cursor: entries.length === 0 ? 'default' : 'pointer',
-          }}>
-            Export CSV
-          </button>
-        </nav>
+      <div
+        className={`dash-mobile-topbar${tab === 'dashboard' && entries.length > 0 ? ' is-home' : ''}`}
+        style={{ borderBottom: '1px solid var(--paper-line)', padding: '14px 16px' }}
+      >
+        <MobileNav {...mobileNavProps} variant="plain" />
       </div>
+
+      {usernameOpen && (
+        <UsernameDialog initial={getUsername(session.user)} onSave={saveUsername} onClose={() => setUsernameOpen(false)} />
+      )}
 
       <div style={{ display: 'flex', alignItems: 'flex-start' }}>
         <SideRail
           tab={tab} setTab={setTab}
           addLedgerTabs={addLedgerTabs} reportsTabs={reportsTabs} moneyTabs={moneyTabs} otherTabs={otherTabs}
-          email={session.user.email} plan={plan} useRoles={useRoles} role={role} isAdmin={isAdmin}
+          email={session.user.email} username={getUsername(session.user)} onEditUsername={() => setUsernameOpen(true)}
+          plan={plan} useRoles={useRoles} role={role} isAdmin={isAdmin}
           onSwitchRole={switchRole} onSignOut={signOut} onExport={exportCSV} exportDisabled={entries.length === 0}
           onAdd={cancelEditEntry}
         />
@@ -2171,6 +2108,17 @@ export default function Dashboard() {
               }))
               .filter((a) => a.balance > 0.001)
               .sort((a, b) => b.balance - a.balance);
+            if (isMobile) {
+              return (
+                <MobileHome
+                  topBar={<MobileNav {...mobileNavProps} variant="hero" />}
+                  name={displayName(session.user)} hasUsername={!!getUsername(session.user)} onEditUsername={() => setUsernameOpen(true)}
+                  totals={totals} monthly={monthly} expenseByCategory={expenseByCategory}
+                  recent={recent} actions={overdue.slice(0, 5)} actionTotal={overdue.length}
+                  canAdd={canAdd} onAdd={startAdd} onNavigate={setTab}
+                />
+              );
+            }
             return (
               <DashboardHome
                 totals={totals} monthly={monthly} trend={trend}

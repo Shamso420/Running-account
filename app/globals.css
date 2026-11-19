@@ -99,6 +99,8 @@ tbody tr:nth-child(odd) {
 @media (max-width: 820px) {
   .dash-sidebar { display: none !important; }
   .dash-mobile-topbar { display: block; }
+  /* The phone home screen draws its own header, so hide the shared bar there. */
+  .dash-mobile-topbar.is-home { display: none; }
 }
 
 /* Side rail: the highlight follows the mouse. The active item steps back to an

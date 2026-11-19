@@ -71,7 +71,7 @@ function RailItem({ icon, label, active, expanded, onClick, href, chevron, open,
 
 export default function SideRail({
   tab, setTab, addLedgerTabs, reportsTabs, moneyTabs, otherTabs,
-  email, plan, useRoles, role, isAdmin, onSwitchRole, onSignOut, onExport, exportDisabled, onAdd,
+  email, username, onEditUsername, plan, useRoles, role, isAdmin, onSwitchRole, onSignOut, onExport, exportDisabled, onAdd,
 }) {
   const [expanded, setExpanded] = useState(false);
   const [group, setGroup] = useState(null);
@@ -163,15 +163,16 @@ export default function SideRail({
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 13, color: 'var(--gold)',
             }}>
-              {(email || '?')[0].toUpperCase()}
+              {(username || email || '?')[0].toUpperCase()}
             </div>
             {expanded && (
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{email}</div>
+                <div style={{ fontSize: 12.5, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{username || email}</div>
                 <div style={{ fontSize: 11, color: 'var(--slate)', textTransform: 'capitalize' }}>{plan} plan{useRoles && role ? ` · ${role}` : ''}</div>
               </div>
             )}
           </div>
+          <RailItem icon="role" label={username ? 'Change username' : 'Set username'} expanded={expanded} onClick={onEditUsername} />
           {isAdmin && <RailItem href="/admin" icon="admin" label="Admin view" expanded={expanded} color="var(--gold)" />}
           {useRoles && <RailItem icon="role" label="Switch role" expanded={expanded} onClick={onSwitchRole} />}
           <RailItem icon="signout" label="Sign out" expanded={expanded} onClick={onSignOut} />
