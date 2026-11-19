@@ -301,7 +301,7 @@ export default function Dashboard() {
     [allEntries, useRoles, role]
   );
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState('add');
+  const [tab, setTab] = useState('dashboard');
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const [form, setForm] = useState(emptyForm());
   const [extraSaleItems, setExtraSaleItems] = useState([]);
