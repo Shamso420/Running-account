@@ -3,11 +3,13 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabaseClient';
+import { USERNAME_MAX, validateUsername } from '../../lib/username';
 
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState('login'); // 'login' | 'signup'
   const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
@@ -26,10 +28,15 @@ export default function LoginPage() {
     setBusy(true);
     try {
       if (mode === 'signup') {
+        const name = username.trim();
+        if (name) {
+          const problem = validateUsername(name);
+          if (problem) throw new Error(problem);
+        }
         const { error: signUpError } = await supabase.auth.signUp({
           email,
           password,
-          options: { emailRedirectTo: window.location.origin },
+          options: { emailRedirectTo: window.location.origin, ...(name ? { data: { username: name } } : {}) },
         });
         if (signUpError) throw signUpError;
         setInfo('Account created. Check your email to confirm it, then log in below.');
@@ -70,6 +77,12 @@ export default function LoginPage() {
         </div>
 
         <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {mode === 'signup' && (
+            <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
+              Username <span style={{ fontWeight: 400 }}>(optional — shown instead of your email)</span>
+              <input type="text" maxLength={USERNAME_MAX} value={username} onChange={(e) => setUsername(e.target.value)} style={{ marginTop: 6 }} />
+            </label>
+          )}
           <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 500 }}>
             Email
             <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} style={{ marginTop: 6 }} />

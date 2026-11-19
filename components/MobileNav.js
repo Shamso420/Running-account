@@ -56,7 +56,7 @@ function SheetItem({ active, onClick, children, disabled, tone }) {
 
 export default function MobileNav({
   variant = 'plain', tab, setTab, addLedgerTabs, reportsTabs, moneyTabs, otherTabs,
-  email, isAdmin, useRoles, onSwitchRole, onSignOut, onExport, exportDisabled, onAdd,
+  email, username, onEditUsername, isAdmin, useRoles, onSwitchRole, onSignOut, onExport, exportDisabled, onAdd,
 }) {
   const [open, setOpen] = useState(null); // null | 'menu' | 'account'
 
@@ -69,7 +69,7 @@ export default function MobileNav({
 
   const allTabs = [...addLedgerTabs, ...reportsTabs, ...moneyTabs, ...otherTabs];
   const currentLabel = allTabs.find((t) => t.key === tab)?.label || '';
-  const initial = (email || '?').trim().charAt(0).toUpperCase();
+  const initial = (username || email || '?').trim().charAt(0).toUpperCase();
 
   const go = (key) => {
     if (key === 'add') onAdd();
@@ -142,8 +142,10 @@ export default function MobileNav({
             }}>
               <div style={{ padding: '10px 14px 12px', borderBottom: '1px solid var(--paper-line)', marginBottom: 6 }}>
                 <div style={{ fontSize: 11, color: 'var(--slate)', fontFamily: "'IBM Plex Mono', monospace", letterSpacing: '0.08em', textTransform: 'uppercase' }}>Signed in as</div>
-                <div style={{ fontSize: 14, marginTop: 4, wordBreak: 'break-all' }}>{email}</div>
+                {username && <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4 }}>{username}</div>}
+                <div style={{ fontSize: username ? 12 : 14, color: username ? 'var(--slate)' : 'var(--ink)', marginTop: username ? 2 : 4, wordBreak: 'break-all' }}>{email}</div>
               </div>
+              <SheetItem onClick={() => { setOpen(null); onEditUsername(); }}>{username ? 'Change username' : 'Set username'}</SheetItem>
               {isAdmin && (
                 <Link href="/admin" onClick={() => setOpen(null)} style={{ display: 'block', padding: '12px 14px', color: 'var(--gold)', fontSize: 15, fontWeight: 500, textDecoration: 'none' }}>
                   Admin view

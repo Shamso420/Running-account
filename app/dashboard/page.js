@@ -9,6 +9,8 @@ import SideRail from '../../components/SideRail';
 import DashboardHome from '../../components/DashboardHome';
 import MobileHome from '../../components/MobileHome';
 import MobileNav from '../../components/MobileNav';
+import UsernameDialog from '../../components/UsernameDialog';
+import { getUsername, displayName } from '../../lib/username';
 import { useMediaQuery, MOBILE_QUERY } from '../../lib/useMediaQuery';
 import { PIE_COLORS, CHART_TOOLTIP_PROPS } from '../../lib/chartStyle';
 import { RATE, TYPES, CATEGORY_SUGGESTIONS, CUSTOMER_TYPES, PAYMENT_METHODS, FREQUENCIES, saleCollectionStatus, debtCollectionStatus, fmtUSD, fmtLBP, toUsdLbp } from '../../lib/ledgerUtils';
@@ -303,6 +305,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('dashboard');
   const isMobile = useMediaQuery(MOBILE_QUERY);
+  const [usernameOpen, setUsernameOpen] = useState(false);
   const [form, setForm] = useState(emptyForm());
   const [extraSaleItems, setExtraSaleItems] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -1511,6 +1514,14 @@ export default function Dashboard() {
     { key: 'journal', label: 'Journal' },
   ];
 
+  // Save the display name into the user's profile data; returns an error message or ''.
+  const saveUsername = async (name) => {
+    const { data, error } = await supabase.auth.updateUser({ data: { username: name } });
+    if (error) return error.message || 'Could not save the username.';
+    if (data?.user) setSession((s) => (s ? { ...s, user: data.user } : s));
+    return '';
+  };
+
   // Phone home screen's quick "Add expense / Add income": open the form on that type.
   const startAdd = (type) => {
     cancelEditEntry();
@@ -1520,7 +1531,7 @@ export default function Dashboard() {
 
   const mobileNavProps = {
     tab, setTab, addLedgerTabs, reportsTabs, moneyTabs, otherTabs,
-    email: session.user.email, isAdmin, useRoles,
+    email: session.user.email, username: getUsername(session.user), onEditUsername: () => setUsernameOpen(true), isAdmin, useRoles,
     onSwitchRole: switchRole, onSignOut: signOut, onExport: exportCSV,
     exportDisabled: entries.length === 0, onAdd: cancelEditEntry,
   };
@@ -1538,11 +1549,16 @@ export default function Dashboard() {
         <MobileNav {...mobileNavProps} variant="plain" />
       </div>
 
+      {usernameOpen && (
+        <UsernameDialog initial={getUsername(session.user)} onSave={saveUsername} onClose={() => setUsernameOpen(false)} />
+      )}
+
       <div style={{ display: 'flex', alignItems: 'flex-start' }}>
         <SideRail
           tab={tab} setTab={setTab}
           addLedgerTabs={addLedgerTabs} reportsTabs={reportsTabs} moneyTabs={moneyTabs} otherTabs={otherTabs}
-          email={session.user.email} plan={plan} useRoles={useRoles} role={role} isAdmin={isAdmin}
+          email={session.user.email} username={getUsername(session.user)} onEditUsername={() => setUsernameOpen(true)}
+          plan={plan} useRoles={useRoles} role={role} isAdmin={isAdmin}
           onSwitchRole={switchRole} onSignOut={signOut} onExport={exportCSV} exportDisabled={entries.length === 0}
           onAdd={cancelEditEntry}
         />
@@ -2096,7 +2112,7 @@ export default function Dashboard() {
               return (
                 <MobileHome
                   topBar={<MobileNav {...mobileNavProps} variant="hero" />}
-                  email={session.user.email}
+                  name={displayName(session.user)} hasUsername={!!getUsername(session.user)} onEditUsername={() => setUsernameOpen(true)}
                   totals={totals} monthly={monthly} expenseByCategory={expenseByCategory}
                   recent={recent} actions={overdue.slice(0, 5)} actionTotal={overdue.length}
                   canAdd={canAdd} onAdd={startAdd} onNavigate={setTab}

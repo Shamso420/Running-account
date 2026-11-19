@@ -9,13 +9,6 @@ import { PIE_COLORS } from '../lib/chartStyle';
 
 const REPORT_COLORS = PIE_COLORS.slice(0, 5);
 
-function greetingName(email) {
-  const first = String(email || '').split('@')[0].split(/[._\-+]/)[0].replace(/\d+$/, '');
-  if (!first) return 'there';
-  const name = first.charAt(0).toUpperCase() + first.slice(1);
-  return name.length > 14 ? `${name.slice(0, 13)}…` : name;
-}
-
 const ICON_COLOR = { minus: 'var(--coral)', plus: 'var(--green)', check: 'var(--blue)' };
 
 function ActionIcon({ kind }) {
@@ -58,7 +51,7 @@ function Tile({ icon, kicker, label, onClick }) {
 }
 
 export default function MobileHome({
-  topBar, email, totals, monthly, expenseByCategory, recent, actions, actionTotal,
+  topBar, name, hasUsername, onEditUsername, totals, monthly, expenseByCategory, recent, actions, actionTotal,
   canAdd, onAdd, onNavigate,
 }) {
   const thisMonth = new Date().toISOString().slice(0, 7);
@@ -83,7 +76,12 @@ export default function MobileHome({
         {topBar}
         <div style={{ margin: '22px 4px 18px' }}>
           <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 30, fontWeight: 300, lineHeight: 1.1 }}>Welcome</div>
-          <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 30, fontWeight: 700, lineHeight: 1.15 }}>{greetingName(email)}!</div>
+          <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 30, fontWeight: 700, lineHeight: 1.15 }}>{name}!</div>
+          {!hasUsername && (
+            <button type="button" onClick={onEditUsername} style={{ marginTop: 8, padding: 0, background: 'none', border: 'none', color: 'var(--gold)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}>
+              Set your username
+            </button>
+          )}
         </div>
         <div style={{ background: 'var(--paper)', border: '1px solid var(--paper-line)', borderRadius: 22, padding: '16px 20px 18px', minHeight: 104, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--slate)' }}>Net position</span>
