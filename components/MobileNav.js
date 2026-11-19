@@ -8,9 +8,8 @@ import Link from 'next/link';
 // `variant="plain"` is the bar shown above every other tab.
 
 const pillBase = {
-  border: 'none', cursor: 'pointer', color: '#fff', background: '#15171c',
+  border: '1px solid var(--paper-line)', cursor: 'pointer', color: 'var(--ink)', background: 'var(--paper)',
   height: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-  boxShadow: '0 1px 0 rgba(255,255,255,0.06) inset',
 };
 
 function MenuIcon() {
@@ -110,7 +109,7 @@ export default function MobileNav({
           aria-label="Account"
           aria-expanded={open === 'account'}
           onClick={() => setOpen(open === 'account' ? null : 'account')}
-          style={{ ...pillBase, width: 44, borderRadius: 22, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16, border: '2px solid rgba(255,255,255,0.18)' }}
+          style={{ ...pillBase, width: 44, borderRadius: 22, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16, color: 'var(--gold)', borderColor: 'var(--gold)' }}
         >
           {initial}
         </button>

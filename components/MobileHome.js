@@ -1,13 +1,13 @@
 'use client';
 
 import { fmtUSD } from '../lib/ledgerUtils';
+import { PIE_COLORS } from '../lib/chartStyle';
 
 // Phone home screen: gradient header with the greeting and net position, this
 // month's income and expenses, quick actions, and a one-glance spending report.
 // The desktop dashboard (DashboardHome) keeps the full charts.
 
-const REPORT_COLORS = ['#F5C6E4', '#CFE3D2', '#F3F0A0', '#C9C9F4', '#FFFFFF'];
-const TILE_BG = 'linear-gradient(160deg, #1b1d23, #121419)';
+const REPORT_COLORS = PIE_COLORS.slice(0, 5);
 
 function greetingName(email) {
   const first = String(email || '').split('@')[0].split(/[._\-+]/)[0].replace(/\d+$/, '');
@@ -15,6 +15,8 @@ function greetingName(email) {
   const name = first.charAt(0).toUpperCase() + first.slice(1);
   return name.length > 14 ? `${name.slice(0, 13)}…` : name;
 }
+
+const ICON_COLOR = { minus: 'var(--coral)', plus: 'var(--green)', check: 'var(--blue)' };
 
 function ActionIcon({ kind }) {
   const common = { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true };
@@ -25,7 +27,7 @@ function ActionIcon({ kind }) {
 
 function Card({ title, action, children, style }) {
   return (
-    <section style={{ background: TILE_BG, border: '1px solid rgba(255,255,255,0.05)', borderRadius: 24, padding: '18px 18px', ...style }}>
+    <section style={{ background: 'var(--card)', border: '1px solid var(--paper-line)', borderRadius: 24, padding: '18px 18px', ...style }}>
       {(title || action) && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 14 }}>
           <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 16, fontWeight: 500, margin: 0 }}>{title}</h3>
@@ -44,11 +46,11 @@ function Tile({ icon, kicker, label, onClick }) {
       onClick={onClick}
       style={{
         position: 'relative', minHeight: 104, padding: '14px 12px', textAlign: 'left', cursor: 'pointer',
-        background: TILE_BG, border: '1px solid rgba(255,255,255,0.05)', borderRadius: 22, color: 'var(--ink)',
+        background: 'var(--card)', border: '1px solid var(--paper-line)', borderRadius: 22, color: 'var(--ink)',
         display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', minWidth: 0,
       }}
     >
-      <span style={{ position: 'absolute', top: 12, right: 12, display: 'flex' }}><ActionIcon kind={icon} /></span>
+      <span style={{ position: 'absolute', top: 12, right: 12, display: 'flex', color: ICON_COLOR[icon] }}><ActionIcon kind={icon} /></span>
       <span style={{ fontSize: 10, color: 'var(--slate)' }}>{kicker}</span>
       <span style={{ fontSize: 15, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
     </button>
@@ -75,17 +77,17 @@ export default function MobileHome({
     // The page's <main> pads its content; this pulls the header out to the screen edges.
     <div style={{ margin: '-28px -24px 0' }}>
       <div style={{
-        background: 'linear-gradient(165deg, #EDF0A6 0%, #D4E3D6 42%, #C3C6F2 100%)',
-        borderRadius: '0 0 36px 36px', padding: '18px 16px 18px', color: '#0A0C10',
+        background: 'radial-gradient(120% 90% at 100% 0%, rgba(45,226,230,0.22) 0%, transparent 60%), radial-gradient(90% 80% at 0% 100%, rgba(240,180,41,0.14) 0%, transparent 60%), var(--card)',
+        borderBottom: '1px solid var(--paper-line)', borderRadius: '0 0 36px 36px', padding: '18px 16px 18px', color: 'var(--ink)',
       }}>
         {topBar}
         <div style={{ margin: '22px 4px 18px' }}>
           <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 30, fontWeight: 300, lineHeight: 1.1 }}>Welcome</div>
           <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 30, fontWeight: 700, lineHeight: 1.15 }}>{greetingName(email)}!</div>
         </div>
-        <div style={{ background: '#101216', color: '#fff', borderRadius: 22, padding: '16px 20px 18px', minHeight: 104, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)' }}>Net position</span>
-          <span style={{ alignSelf: 'flex-end', fontFamily: "'Space Grotesk', sans-serif", fontSize: 32, fontWeight: 500, color: net < 0 ? 'var(--coral)' : '#fff' }}>
+        <div style={{ background: 'var(--paper)', border: '1px solid var(--paper-line)', borderRadius: 22, padding: '16px 20px 18px', minHeight: 104, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--slate)' }}>Net position</span>
+          <span style={{ alignSelf: 'flex-end', fontFamily: "'Space Grotesk', sans-serif", fontSize: 32, fontWeight: 600, color: net < 0 ? 'var(--coral)' : 'var(--green)' }}>
             {fmtUSD(net)}
           </span>
         </div>
@@ -97,7 +99,7 @@ export default function MobileHome({
             { label: 'Income this month', value: m.income },
             { label: 'Expenses this month', value: m.expense },
           ].map((row, i) => (
-            <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '13px 0', borderTop: i ? '1px solid rgba(255,255,255,0.07)' : 'none' }}>
+            <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '13px 0', borderTop: i ? '1px solid var(--paper-line)' : 'none' }}>
               <span style={{ fontSize: 13.5, color: 'var(--ink)' }}>{row.label}</span>
               <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 14, fontWeight: 600 }}>{fmtUSD(row.value)}</span>
             </div>
@@ -119,7 +121,7 @@ export default function MobileHome({
                 {report.map((c) => (
                   <div key={c.name} style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: 10.5, color: 'var(--slate)', marginBottom: 6 }}>{Math.round(c.pct)}%</div>
-                    <div style={{ height: 96, background: 'rgba(255,255,255,0.04)', borderRadius: 14, display: 'flex', alignItems: 'flex-end', padding: '0 0 0 0', overflow: 'hidden' }}>
+                    <div style={{ height: 96, background: 'var(--paper)', borderRadius: 14, display: 'flex', alignItems: 'flex-end', padding: '0 0 0 0', overflow: 'hidden' }}>
                       <div style={{ width: '100%', height: `${Math.max(5, c.pct)}%`, background: c.color, borderRadius: '14px 14px 0 0' }} />
                     </div>
                   </div>
@@ -148,7 +150,7 @@ export default function MobileHome({
           ) : (
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
               {recent.map((r, i) => (
-                <li key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderTop: i ? '1px solid rgba(255,255,255,0.07)' : 'none' }}>
+                <li key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderTop: i ? '1px solid var(--paper-line)' : 'none' }}>
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: r.color, flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</div>
@@ -171,7 +173,7 @@ export default function MobileHome({
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
               {actions.map((a, i) => (
                 <li key={a.id}>
-                  <button type="button" onClick={() => onNavigate('debts')} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 0', border: 'none', borderTop: i ? '1px solid rgba(255,255,255,0.07)' : 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer', color: 'var(--ink)' }}>
+                  <button type="button" onClick={() => onNavigate('debts')} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 0', border: 'none', borderTop: i ? '1px solid var(--paper-line)' : 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer', color: 'var(--ink)' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.who}</div>
                       <div style={{ fontSize: 11.5, color: 'var(--coral)' }}>Overdue · {a.days}d</div>
